@@ -1,6 +1,1 @@
-# trendFollowingSystem
-# trendFollowingSystem
-# trendFollowingSystem
-# trendFollowingSystem
-# trendFollowingSystem
-# trendFollowingSystem
+#inspired by Ed Seykota

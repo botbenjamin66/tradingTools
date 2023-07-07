@@ -3,32 +3,27 @@ import numpy as np
 import yfinance as yf
 import matplotlib.pyplot as plt
 
-#TRADE UNIVERSE
-tickers = ["^GDAXI", "GBPCHF=X", "GOLD"]
-ticker_names = {"^GDAXI": "DAX", "GBPCHF=X": "GBP/CHF", "GOLD": "Gold"}
-data_dict = {}
-
 #TRADING FRAMEWORK
-inputDataInterval = "1wk" #1d, 1wk, 1mo
-backtestStart = 2014
-backtestEnd = 2019
-forwardtestStart = 2011
-forwardtestEnd = 2020
+inputDataInterval = '1wk'
+backtestStart = 2015
+backtestEnd = 2021
 
-trailStEntry = 2
-trailStExit = 2
-trailLtEntry = 10
-trailLtExit = 10
-
-comissions = 0.01
+commissions = 0.01
 spread = 0.01
 slippage = 0.01
-interest = 0.00
+interest = 0.0
 
-entryPrice = "Open" #Close, Open, High, Low
-exitPrice = "Open" #Close, Open, High, Low
+entryPrice = 'Open' #Close, Open, High, Low
+exitPrice = 'Close' #Close, Open, High, Low
 
-#DF1 - DATE, OPEN, HIGH, LOW, CLOSE, ADJ CLOSE, VOLUME
+results = {}
+
+#TRADE UNIVERSE
+tickers = ["^GDAXI", "GBPCHF=X", "GC=F"]
+ticker_names = {"^GDAXI": "DAX", "GBPCHF=X": "GBP/CHF", "GC=F": "Gold"}
+data_dict = {}
+
+#GET DATA - DATE, OPEN, HIGH, LOW, CLOSE, ADJ CLOSE, VOLUME
 for ticker in tickers:
     df = yf.download(ticker, start=str(backtestStart) + "-01-01", end=str(backtestEnd) + "-01-01", interval= inputDataInterval)
     if df.empty:
@@ -37,54 +32,87 @@ for ticker in tickers:
     df = df.rename(columns={'Adj Close': 'Close'})
     df.insert(0, 'Close', df.pop('Close'))
 
-    df['longEntryBoLt'] = np.where(df['Close'] > df['Close'].shift(1).rolling(window=trailLtEntry).max(), 1, 0)
-    df['longExitBoLt'] = np.where(df['Close'] < df['Close'].shift(1).rolling(window=trailLtExit).max(), 1, 0)
-    df['shortEntryBoLt'] = np.where(df['Close'] < df['Close'].shift(1).rolling(window=trailLtEntry).max(), 1, 0)
-    df['shortExitBoLt'] = np.where(df['Close'] > df['Close'].shift(1).rolling(window=trailLtExit).max(), 1, 0)
+for x in range(-10, 11, 2):
+    longTrailEntry = 10 + x
+    longTrailExit = 10 + x
+    shortTrailEntry = 10 + x
+    shortTrailExit = 10 + x
 
-    df['longEntryBoSt'] = np.where(df['Close'] > df['Close'].shift(1).rolling(window=trailStEntry).max(), 1, 0)
-    df['longExitBoSt'] = np.where(df['Close'] < df['Close'].shift(1).rolling(window=trailStExit).max(), 1, 0)
-    df['shortEntryBoSt'] = np.where(df['Close'] < df['Close'].shift(1).rolling(window=trailLtEntry).max(), 1, 0)
-    df['shortExitBoSt'] = np.where(df['Close'] > df['Close'].shift(1).rolling(window=trailLtExit).max(), 1, 0)
+    df['longEntryBo'] = np.where(df['Close'] > df['Close'].shift(1).rolling(window=longTrailEntry).max(), 1, 0)
+    df['longExitBo'] = np.where(df['Close'] < df['Close'].shift(1).rolling(window=longTrailExit).max(), 1, 0)
 
-    df['volumeSpike'] = np.where(df['Volume'] > df['Volume'].shift(1).rolling(window=trailStExit).max(), 1, 0)
-    df['volumeVoodoo'] = np.where(df['Volume'] < df['Volume'].shift(1).rolling(window=trailStExit).min(), 1, 0)
+    df['shortEntryBo'] = np.where(df['Close'] < df['Close'].shift(1).rolling(window=shortTrailEntry).max(), 1, 0)
+    df['shortExitBo'] = np.where(df['Close'] > df['Close'].shift(1).rolling(window=longTrailExit).max(), 1, 0)
 
     # TRADE SIGNALS
-    df['longEntrySignal'] = np.where((df['longEntryBoSt'] == 1) & (df['longEntryBoLt'] == 1), 1, 0)
-    df['longExitSignal'] = np.where((df['longExitBoSt'] == 1) & (df['longExitBoLt'] == 1), 1, 0)
-    df['shortEntrySignal'] = np.where((df['shortEntryBoSt'] == 1) & (df['shortEntryBoLt'] == 1), 1, 0)
-    df['shortExitSignal'] = np.where((df['shortExitBoSt'] == 1) & (df['shortExitBoLt'] == 1), 1, 0)
+    df['longEntrySignal'] = np.where((df['longEntryBo'] == 1), 1, 0)
+    df['longExitSignal'] = np.where((df['longExitBo'] == 1), 1, 0)
+    df['shortEntrySignal'] = np.where((df['shortEntryBo'] == 1), 1, 0)
+    df['shortExitSignal'] = np.where((df['shortExitBo'] == 1), 1, 0)
 
     #ORGA
     data_dict[ticker_names[ticker]] = df
 
+    #EXPOSURE
     for ticker, df in data_dict.items():
         df['longExposure'] = 0
         df['shortExposure'] = 0
         df['totalExposure'] = 0
-        df['longExposure'] = np.where(df['longEntrySignal'] == 1, 1, np.where(df['longExitSignal'] == 1, 0, df['longExposure'].shift()))
-        df['shortExposure'] = np.where(df['shortEntrySignal'] == 1, 1, np.where(df['shortExitSignal'] == 1, 0, df['shortExposure'].shift()))
+        df['longExposure'] = np.where(df['longEntrySignal'].shift() == 1, 1, np.where(df['longExitSignal'].shift() == 1, 0, df['longExposure'].shift()))
+        df['shortExposure'] = np.where(df['shortEntrySignal'].shift() == 1, 1, np.where(df['shortExitSignal'].shift() == 1, 0, df['shortExposure'].shift()))
         df['totalExposure'] = df['longExposure'] - df['shortExposure']
 
     data_dict[ticker] = df
 
+    #RETURNS
+    df['longReturns'] = np.where(df['longExposure'] != 0, (df['Close'] - df['Close'].shift()) / df['Close'].shift(), 0)
+    df.loc[df['longExposure'].diff() > 0, 'longReturns'] -= (commissions + spread + slippage)
+    df.loc[df['longExposure'].diff() < 0, 'longReturns'] -= (interest * len(df[df['longExposure'].diff() != 0].index[-1:]))
+    df['shortReturns'] = np.where(df['shortExposure'] != 0, (df['Close'].shift() - df['Close']) / df['Close'].shift(), 0)
+    df.loc[df['shortExposure'].diff() > 0, 'shortReturns'] -= (commissions + spread + slippage)
+    df.loc[df['shortExposure'].diff() < 0, 'shortReturns'] -= (interest * len(df[df['shortExposure'].diff() != 0].index[-1:]))
+
     #EQUITY
-    df['longExposureChange'] = df['longExposure'].diff()
-    lastLongTrade = df['longExposureChange'] != 0
-    df['longReturns'] = (df['Close'] - df['Close'].shift().where(lastLongTrade)) / df['Close']
+    df['longEquity'] = (1 + df['longReturns']).cumprod()
+    df['shortEquity'] = (1 + df['shortReturns']).cumprod()
+    df['totalEquity'] = (1 + (df['longReturns'] + df['shortReturns'])).cumprod()
 
-    print(df['longReturns'])
+    #STATS
+    testLengthYears = backtestEnd - backtestStart
 
-    #PERFORMANCE SHEET (HEATMAP + STATS)
+    cagrLong = df['longEquity'].iloc[-1] ** (1 / (backtestEnd - backtestStart)) - 1
+    cagrShort = df['shortEquity'].iloc[-1] ** (1 / (backtestEnd - backtestStart)) - 1
+    cagrTotal = df['totalEquity'].iloc[-1] ** (1 / (backtestEnd - backtestStart)) - 1
 
+    maxDrawLong = ((df['longEquity'] - df['longEquity'].cummax()) / df['longEquity'].cummax()).min()
+    maxDrawShort = ((df['shortEquity'] - df['shortEquity'].cummax()) / df['shortEquity'].cummax()).min()
+    maxDrawTotal = ((df['totalEquity'] - df['totalEquity'].cummax()) / df['totalEquity'].cummax()).min()
+    
+    blissLong = cagrLong / maxDrawLong  
+    blissShort = cagrShort / maxDrawShort
+    blissTotal = cagrTotal / maxDrawTotal
+
+    key = (longTrailEntry, longTrailExit, shortTrailEntry, shortTrailExit)
+    results[key] = {'CAGR_Long': cagrLong, 'CAGR_Short': cagrShort, 'CAGR_Total': cagrTotal,
+                    'Max_Draw_Long': maxDrawLong, 'Max_Draw_Short': maxDrawShort, 'Max_Draw_Total': maxDrawTotal,
+                    'Bliss_Long': blissLong, 'Bliss_Short': blissShort, 'Bliss_Total': blissTotal}
+
+results_df = pd.DataFrame(results).T    
+# If you want to set the DataFrame column names as the first level of the index:
+results_df.index.names = ['longTrailEntry', 'longTrailExit', 'shortTrailEntry', 'shortTrailExit']
+
+
+
+
+
+'''
 #CHARTING
 chartingHighlight1 = 'Close'
-chartingHighlight2 = 'longExposure'
-chartingHighlight3 = 'shortExposure'
-chartingHighlight4 = 'longReturns'
+chartingHighlight2 = 'longEquity'
+chartingHighlight3 = 'shortEquity'
+chartingHighlight4 = 'totalEquity'
 
-fig, axs = plt.subplots(len(tickers), 4, figsize=(16, 5*len(tickers)))
+fig, axs = plt.subplots(len(tickers), 5, figsize=(20, 5*len(tickers)))
 for i, ticker in enumerate(tickers):
     df = data_dict[ticker_names[ticker]]
     axs[i, 0].plot(df.index, df[chartingHighlight1], color='black', label=chartingHighlight1)
@@ -108,17 +136,25 @@ for i, ticker in enumerate(tickers):
     axs[i, 2].set_title(chartingHighlight3)
     axs[i, 2].tick_params(axis='x', rotation=45)
 
-    axs[i, 3].plot(df.index, df[chartingHighlight4], color='black', label=chartingHighlight4)
+    axs[i, 3].plot(df.index, df[chartingHighlight4], color='black', label=chartingHighlight4, linestyle='-', marker='')
     axs[i, 3].set_title(chartingHighlight4)
     axs[i, 3].tick_params(axis='x', rotation=45)
+    
+    axs[i, 4].axis('tight')
+    axs[i, 4].axis('off')
+    stats = [{'CAGR': cagrLong, 'Max Drawdown': maxDrawLong, 'bliss' : blissLong}, 
+             {'CAGR': cagrShort, 'Max Drawdown': maxDrawShort, 'bliss' : blissShort}, 
+             {'CAGR': cagrTotal, 'Max Drawdown': maxDrawTotal, 'bliss' : blissTotal}]
+    table_data = pd.DataFrame(stats, index=['Long', 'Short', 'Total'])
+    axs[i, 4].table(cellText=table_data.values,
+                    colLabels=table_data.columns,
+                    rowLabels=table_data.index,
+                    cellLoc = 'center', loc='center')
 
-    plt.subplots_adjust(wspace=0.01)
-
+plt.subplots_adjust(wspace=0.01)
 plt.tight_layout()
 plt.show()
+'''
 
-#OPTIMIZATION
 
-#FORWARD TEST
 
-#FINAL ANALYSIS PAPER (HEATMAP & STATS)
