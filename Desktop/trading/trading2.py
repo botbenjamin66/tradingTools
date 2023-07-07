@@ -1,7 +1,12 @@
+import matplotlib.gridspec as gridspec
+import matplotlib.pyplot as plt
+import yfinance as yf
+import seaborn as sns
 import pandas as pd
 import numpy as np
-import yfinance as yf
-import matplotlib.pyplot as plt
+
+direction = 'long'
+systemApproach = 'trend'
 
 #FUNCTIONS
 def createDf():
@@ -15,27 +20,33 @@ def createDf():
         'longExposure', 'shortExposure', 'totalExposure']] = 0.0
     return df
 
-def downloadData(ticker, backtestStart, endDate, interval):
-    df = yf.download(ticker, start=backtestStart, end=backtestEnd, interval=inputDataInterval)
+def downloadDataYf(ticker, backtestStart, endDate, interval):
+    df = yf.download(ticker, start=str(backtestStart) + "-01-01", end=str(backtestEnd) + "-01-01", interval= inputDataInterval)
     if df.empty:
-        df = yf.download(ticker, start="max", end=backtestEnd, interval=inputDataInterval)
+        df = yf.download(ticker, start="max", end=str(backtestEnd) + "-01-01", interval=inputDataInterval)
     df = df.drop(columns=['Close'])
     df = df.rename(columns={'Adj Close': 'Close'})
     df.insert(0, 'Close', df.pop('Close'))
     return df
 
-def boSignals(df, longTrailEntry, longTrailExit, shortTrailEntry):
-    df['longEntryBo'] = np.where(df['Close'] > df['Close'].shift(1).rolling(window=longTrailEntry).max(), 1, 0)
-    df['longExitBo'] = np.where(df['Close'] < df['Close'].shift(1).rolling(window=longTrailExit).max(), 1, 0)
-    df['shortEntryBo'] = np.where(df['Close'] < df['Close'].shift(1).rolling(window=shortTrailEntry).max(), 1, 0)
-    df['shortExitBo'] = np.where(df['Close'] > df['Close'].shift(1).rolling(window=longTrailExit).max(), 1, 0)
+def boSignals(df, trailEntry, trailExit):
+    df['longEntryBo'] = np.where(df['Close'] > df['Close'].shift(1).rolling(window=trailEntry).max(), 1, 0)
+    df['longExitBo'] = np.where(df['Close'] < df['Close'].shift(1).rolling(window=trailExit).max(), 1, 0)
+    df['shortEntryBo'] = np.where(df['Close'] < df['Close'].shift(1).rolling(window=trailEntry).max(), 1, 0)
+    df['shortExitBo'] = np.where(df['Close'] > df['Close'].shift(1).rolling(window=trailExit).max(), 1, 0)
     return df
 
-def tradeSignals(df):
-    df['longEntrySignal'] = np.where(df['longEntryBo'] == 1, 1, 0)
-    df['longExitSignal'] = np.where(df['longExitBo'] == 1, 1, 0)
-    df['shortEntrySignal'] = np.where(df['shortEntryBo'] == 1, 1, 0)
-    df['shortExitSignal'] = np.where(df['shortExitBo'] == 1, 1, 0)
+def tradeSignals(df, systemApproach):
+    if systemApproach == 'trend':
+        df['longEntrySignal'] = np.where(df['longEntryBo'] == 1, 1, 0)
+        df['longExitSignal'] = np.where(df['longExitBo'] == 1, 1, 0)
+        df['shortEntrySignal'] = np.where(df['shortEntryBo'] == 1, 1, 0)
+        df['shortExitSignal'] = np.where(df['shortExitBo'] == 1, 1, 0)
+    elif systemApproach == 'reversion':
+        df['longEntrySignal'] = np.where(df['longEntryBo'] == 0, 1, 0)
+        df['longExitSignal'] = np.where(df['longExitBo'] == 0, 1, 0)
+        df['shortEntrySignal'] = np.where(df['shortEntryBo'] == 0, 1, 0)
+        df['shortExitSignal'] = np.where(df['shortExitBo'] == 0, 1, 0)
     return df
 
 def exp(df):
@@ -65,48 +76,125 @@ def equity(df):
 def stats(df, backtestStart, backtestEnd):
     testLengthYears = backtestEnd - backtestStart
 
-    cagrLong = df['longEquity'].iloc[-1] ** (1 / testLengthYears) - 1
-    cagrShort = df['shortEquity'].iloc[-1] ** (1 / testLengthYears) - 1
-    cagrTotal = df['totalEquity'].iloc[-1] ** (1 / testLengthYears) - 1
-    maxDrawLong = ((df['longEquity'] - df['longEquity'].cummax()) / df['longEquity'].cummax()).min()
-    maxDrawShort = ((df['shortEquity'] - df['shortEquity'].cummax()) / df['shortEquity'].cummax()).min()
-    maxDrawTotal = ((df['totalEquity'] - df['totalEquity'].cummax()) / df['totalEquity'].cummax()).min()
-    blissLong = cagrLong / maxDrawLong  
-    blissShort = cagrShort / maxDrawShort
-    blissTotal = cagrTotal / maxDrawTotal
-
+    if direction == 'long':
+        cagr = df['longEquity'].iloc[-1] ** (1 / testLengthYears) - 1
+        maxDraw = ((df['longEquity'] - df['longEquity'].cummax()) / df['longEquity'].cummax()).min()
+        bliss = cagr / maxDraw if cagr >= 0 else 0
+        winRatio = len(df[df['longReturns'] > 0]) / len(df[df['longReturns'] != 0])
+        avgWin = df[df['longReturns'] > 0]['longReturns'].mean()
+        avgLoss = df[df['longReturns'] < 0]['longReturns'].mean()
+        tradesPerYear = len(df[df['longReturns'] != 0]) / testLengthYears
+        avgHoldingInInterval = (df['longExposure'] == 1).sum() / len(df[df['longExposure'].diff() != 0])
+    elif direction == 'short':
+        cagr = df['shortEquity'].iloc[-1] ** (1 / testLengthYears) - 1
+        maxDraw = ((df['shortEquity'] - df['shortEquity'].cummax()) / df['shortEquity'].cummax()).min()
+        bliss = cagr / maxDraw if cagr >= 0 else 0
+        winRatio = len(df[df['shortReturns'] > 0]) / len(df[df['shortReturns'] != 0])
+        avgWin = df[df['shortReturns'] > 0]['shortReturns'].mean()
+        avgLoss = df[df['shortReturns'] < 0]['shortReturns'].mean()
+        tradesPerYear = len(df[df['shortReturns'] != 0]) / testLengthYears
+        avgHoldingInInterval = (df['shortExposure'] == 1).sum() / len(df[df['shortExposure'].diff() != 0])
+    else:  # direction == 'total'
+        cagr = df['totalEquity'].iloc[-1] ** (1 / testLengthYears) - 1
+        maxDraw = ((df['totalEquity'] - df['totalEquity'].cummax()) / df['totalEquity'].cummax()).min()
+        bliss = cagr / maxDraw if cagr >= 0 else 0
+        winRatio = (len(df[df['longReturns'] > 0]) + len(df[df['shortReturns'] > 0])) / (len(df[df['longReturns'] != 0]) + len(df[df['shortReturns'] != 0]))
+        avgWin = df[(df['longReturns'] > 0) | (df['shortReturns'] > 0)]['longReturns'].mean()
+        avgLoss = df[(df['longReturns'] < 0) | (df['shortReturns'] < 0)]['longReturns'].mean()
+        tradesPerYear = (len(df[df['longReturns'] != 0]) + len(df[df['shortReturns'] != 0])) / testLengthYears
+        avgHoldingInInterval = ((df['longExposure'] == 1) | (df['shortExposure'] == 1)).sum() / len(df[df['longExposure'].diff() != 0])
     return {
-        'cagrLong': cagrLong,
-        'cagrShort': cagrShort,
-        'cagrTotal': cagrTotal,
-        'maxDrawLong': maxDrawLong,
-        'maxDrawShort': maxDrawShort,
-        'maxDrawTotal': maxDrawTotal,
-        'blissLong': blissLong,
-        'blissShort': blissShort,
-        'blissTotal': blissTotal
-    }
-    
+        'cagr': cagr,
+        'maxDraw': maxDraw,
+        'bliss': bliss,
+        'winRatio': winRatio,
+        'avgWin': avgWin,
+        'avgLoss': avgLoss,
+        'tradesPerYear': tradesPerYear,
+        'avgHoldingInInterval': avgHoldingInInterval}
+
 #TRADING FRAMEWORK
+direction = 'long'
 inputDataInterval = '1wk'
-backtestStart, backtestEnd = 2015, 2020
+backtestStart, backtestEnd = 2017, 2024
 commissions, spread, slippage, interest = 0.01, 0.01, 0.01, 0.02
 entryPrice, exitPrice = 'Open', 'Close' #Close, Open, High, Low
 
-longTrailEntry = 10
-longTrailExit = 4
-shortTrailEntry = 10
-shortTrailExit = 4
-
 #TRADE UNIVERSE
-tickers = ["^GDAXI", "GBPCHF=X", "GC=F"]
-ticker_names = {"^GDAXI": "DAX", "GBPCHF=X": "GBP/CHF", "GC=F": "Gold"}
-data_dict = {}
-results = {}    
+tickers = ["^GDAXI"]
+ticker_names = {"^GDAXI": "DAX"}
+priceData = {}
+results = {}
+heatmap_values = []
 
-for ticker
-    for x in trendSystem
-     make stats 
-      store in df/dic=results
-    make 4D chart
- next ticker
+# SYSTEM PARAMETERS
+aValues = range(10, 61, 10)
+bValues = range(10, 61, 10)
+
+# CALCULATION
+for ticker in tickers:
+    priceData[ticker] = downloadDataYf(ticker, backtestStart, backtestEnd, inputDataInterval)
+
+    results[ticker] = {}
+    dictOfResults = {}
+    for a in aValues:
+        for b in bValues: 
+            df = priceData[ticker].copy()
+
+            trailEntry = a
+            trailExit = b
+
+            df = boSignals(df, trailEntry, trailExit)
+            df = tradeSignals(df, systemApproach)
+            df = exp(df)
+            df = returns(df, commissions, spread, slippage, interest)
+            df = equity(df)
+            parameterStats = stats(df, backtestStart, backtestEnd)
+            dictOfResults[(a, b)] = parameterStats
+    results[ticker]['parameterStats'] = dictOfResults
+    results[ticker]['ticker_name'] = ticker_names[ticker] 
+
+# PLOT
+heatmapVariables = ['cagr', 'maxDraw', 'bliss']
+thirdDimension = 'winRatio'
+
+for ticker in tickers:
+    fig = plt.figure(figsize=(20, 10))
+    gs = gridspec.GridSpec(2, 3, height_ratios=[2, 1])
+
+    ax_index = 0
+    for variable in heatmapVariables:
+        data = []
+        for key, value in results[ticker]['parameterStats'].items():
+            a, b = key
+            data.append([a, b, value[variable]])
+
+        df_heatmap = pd.DataFrame(data, columns=['a', 'b', variable])
+        df_heatmap = df_heatmap.pivot("a", "b", variable)
+
+        if ax_index == 0:
+            ax = plt.subplot(gs[ax_index], projection='3d')
+            x = np.array(df_heatmap.columns)
+            y = np.array(df_heatmap.index)
+            X, Y = np.meshgrid(x, y)
+            Z = np.array(df_heatmap)
+            ax.plot_surface(X, Y, Z, cmap='plasma', edgecolor='none')
+            ax.set_xlabel('b')
+            ax.set_ylabel('a')
+            ax.set_zlabel(variable)
+        else:
+            ax = plt.subplot(gs[ax_index])
+            sns.heatmap(df_heatmap, annot=True, fmt=".2f", cmap='plasma', linewidths=.5, ax=ax)
+            ax.invert_yaxis()
+            ax.set_title(f"{variable} - {results[ticker]['ticker_name']}")
+
+        ax_index += 1
+
+    ax2 = plt.subplot(gs[3:])  # Add subplot that spans all columns
+    ax2.set_ylabel('currency')
+    priceData[ticker]['Close'].plot(ax=ax2)
+    ax2.set_title('Closing Prices')
+
+    plt.suptitle(f'{direction}', fontsize=16)
+    plt.tight_layout()
+    plt.show()

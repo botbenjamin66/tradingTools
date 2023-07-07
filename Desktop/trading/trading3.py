@@ -154,6 +154,7 @@ for ticker in tickers:
     results[ticker]['parameterStats'] = dictOfResults
     results[ticker]['ticker_name'] = ticker_names[ticker] 
 
+        
 # PLOT
 heatmapVariables = ['cagr', 'maxDraw', 'bliss']
 thirdDimension = 'winRatio'
@@ -161,14 +162,14 @@ thirdDimension = 'winRatio'
 for ticker in tickers:
     fig = plt.figure(figsize=(20, 10))
     gs = gridspec.GridSpec(2, 3, height_ratios=[2, 1])
-
+    
     ax_index = 0
     for variable in heatmapVariables:
         data = []
         for key, value in results[ticker]['parameterStats'].items():
             a, b = key
             data.append([a, b, value[variable]])
-
+        
         df_heatmap = pd.DataFrame(data, columns=['a', 'b', variable])
         df_heatmap = df_heatmap.pivot("a", "b", variable)
 
@@ -187,14 +188,14 @@ for ticker in tickers:
             sns.heatmap(df_heatmap, annot=True, fmt=".2f", cmap='plasma', linewidths=.5, ax=ax)
             ax.invert_yaxis()
             ax.set_title(f"{variable} - {results[ticker]['ticker_name']}")
-
+        
         ax_index += 1
 
     ax2 = plt.subplot(gs[3:])  # Add subplot that spans all columns
     ax2.set_ylabel('currency')
     priceData[ticker]['Close'].plot(ax=ax2)
     ax2.set_title('Closing Prices')
-
+    
     plt.suptitle(f'{direction}', fontsize=16)
     plt.tight_layout()
     plt.show()
