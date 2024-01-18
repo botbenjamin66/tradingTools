@@ -11,17 +11,18 @@ def dfBasic(downloadsPath, inputDays):
         glob.glob(f"{downloadsPath}/*.csv"),
         key=os.path.getmtime,
         reverse=True
-    )[:inputDays + 1]
+        )[:inputDays + 1]
 
     dfs = {} 
     for i, filePath in enumerate(file_paths, start=1):
-        df = pd.read_csv(filePath, sep=';', decimal=',', thousands='.', engine='python')
+        df = pd.read_csv(filePath, sep=';', decimal=',', thousands='.', engine='python', encoding='latin1')
+
         df[['Date', 'Time']] = df.iloc[:, 0].str.split(' ', n=1, expand=True)
         df.drop(df.columns[0], axis=1, inplace=True)
 
         df['Date'] = pd.to_datetime(df['Date'], format='%d.%m.%Y').dt.date
         df.set_index(pd.to_datetime(df.pop('Time'), format='%H:%M:%S').dt.time, inplace=True)
-        df.rename(columns={'Kurs': 'Price', 'Währung': 'Currency', 'Stück': 'Contracts', 'Kumuliert': 'Cumulative'}, inplace=True)
+        df.rename(columns={'Kurs': 'Price', 'WÃ¤hrung': 'Currency', 'StÃ¼ck': 'Contracts', 'Kumuliert': 'Cumulative'}, inplace=True)
 
         df = df.iloc[::-1]
         dateColumn = df.pop('Date')
@@ -118,7 +119,7 @@ dfData = dfBasic(downloadsPath, inputDays=1)
 for day, df in dfData.items():
     print(f"Plotting {day} data")
     plotDfBasic(df)
-    print(df)
+    #print(df)
 
 
 
