@@ -1,6 +1,3 @@
-# PF-2H-LS : BTC, ETH, GOLD, COP, OIL, 10Y, QQQ, NIK, DAX, NVDA, TSLA, BABA, USD/GBP, USD/JPY, EUR/CHF, EUR/GBP
-# PF-1H-L  : VIX, CURV, INFL, INDIA
-# PF-1H-L : ALTC, MMD, CALL, DINO, SING
 
 from dash.dependencies import Input, Output
 from datetime import datetime, timedelta
@@ -28,15 +25,13 @@ Q12024 = [
     ("GS", 60, 20, 60, 20, 20, 57, 4.6),
     ("NVDA", 70, 21, 94, 14, 66, 61, 3.6),
     ("PLTR", 70, 21, 94, 14, 46, 45, 3.4),
-    ("BABA", 49, 21, 49, 7, 38, 58, 6.0),
     ("GLEN.L", 63, 21, 63, 21, 30, 53, 3.9),
     
     ("MODG", 21, 7, 0, 0, 82, 73, 7.2),
     ("INFL.PA", 40, 60, 0, 0, 0, 66, 1.5),
     ("USTP.DE", 60, 20, 0, 0, 0, 39, 3.0),
     ("LVO.AS", 33, 2, 0, 0, 35, 83, 4.1),
-    ("EURCHF=X", 0, 0, 40, 60, 0, 46, 1.3),
-    ("BRK-B", 0, 0, 22, 2, 4, 82, 8.9)]
+    ("EURCHF=X", 0, 0, 40, 60, 0, 46, 1.3)]
 
 ### FUNCTIONS
 def calculateSystem(tickerPriceData, longIn, longOut, shortIn, shortOut, trail):
@@ -85,7 +80,7 @@ def calculateSystem(tickerPriceData, longIn, longOut, shortIn, shortOut, trail):
 
 ### INIT
 alpacaEquity, heat = 109, 0.01
-selectedPortfolio, lookbackPeriod, tickerExposureDataDict, triggerPrice1, trail = Q12024, 400, {}, 'Close', 21
+selectedPortfolio, lookbackPeriod, tickerExposureDataDict, triggerPrice1, trail = Q12024, 600, {}, 'Close', 21
 tradingPlan = pd.DataFrame(selectedPortfolio, columns=['ticker', 'longIn', 'longOut', 'shortIn', 'shortOut', 'bliss', 'hitRatio', 'tpy'])
 startDate, endDate = (datetime.today() - timedelta(days=lookbackPeriod)).strftime('%Y-%m-%d'), datetime.today().strftime('%Y-%m-%d')
 

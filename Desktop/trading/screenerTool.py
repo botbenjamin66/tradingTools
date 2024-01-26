@@ -9,22 +9,22 @@ from datetime import timedelta
 import random, yfinance as yf
 from datetime import datetime
 import numpy as np
-from createTool import empColours
 
-signalLookback, signalBlock, trail1, factor1 = 10, timedelta(days=5), 21, 2
+signalLookback, signalBlock, trail1, factor1 = 60, timedelta(days=0), 21, 2
 triggerPrice, tradePrice = 'Close', 'Open'
-endDate, startDate = datetime.now(), datetime.now() - timedelta(days=60)
+endDate, startDate = datetime.now(), datetime.now() - timedelta(days=90)
+tradeSignalsTickerDate, cleanedTradeSignals, seenTickers = [], [], {}
 
-# DEFINE TICKER UNIVERSE
+# TICKER
 dachTickerDict = {
     "1&1": "1U1.DE", "2G Energy": "2GB.DE", "3U": "UUU.DE", "7C Solarparken": "HRPK.DE", "ÖKOWORLD (ex Versiko)": "VVV3.DE",
     "Österreichische Post": "POST.VI", "ABB (Asea Brown Boveri)": "ABBN.SW", "ABO Wind": "AB9.DE", "Adecco SA": "ADEN.SW",
-    "adesso": "ADN1.DE", "adidas": "ADS.DE", "Adler Real Estate": "ADL.DE", "ADM Hamburg": "OEL.SG", "ADVA Optical Networking": "ADV.DE",
+    "adesso": "ADN1.DE", "adidas": "ADS.DE", "Adler Real Estate": "ADJ.DE", "ADM Hamburg": "OEL.SG", "ADVA Optical Networking": "ADV.DE",
     "Adval Tech": "ADVN.SW", "AGRANA": "AGR.VI", "AIXTRON": "AIXA.DE", "ALBA": "ABA.SG", "Alcon": "ALC.SW",
     "All for One Group": "A1OS.DE", "Allane": "LNSX.DE", "Allgeier": "AEIN.DE", "ALSO": "ALSN.SW", "AlzChem Group": "ACT.DE",
     "Amadeus FiRe": "AAD.DE", "AMAG": "AMAG.VI", "Andritz": "ANDR.VI", "Arbonia": "ARBN.SW", "artnet": "ART.DE",
     "ARYZTA": "ARYN.SW", "Ascom": "ASCN.SW", "AT S (AT&S)": "ATS.VI", "ATOSS Software": "AOF.DE", "Aumann": "AAG.DE",
-    "AURELIUS": "AR4.DE", "Aurubis": "NDA.DE", "AUTO1": "AG1.DE", "Aves One": "AVES.DE", "Barry Callebaut": "BARN.SW",
+    "AURELIUS": "AR4.DE", "Aurubis": "NDA.DE", "AUTO1": "AG1.DE", "Barry Callebaut": "BARN.SW",
     "BASF": "BAS.DE", "Basler": "BSL.DE", "BAUER": "B5A.DE", "BAVARIA Industries Group": "B8A.DE", "Bayer": "BAYN.DE",
     "BayWa": "BYW6.DE", "Bechtle": "BC8.DE", "Befesa": "BFSA.DE", "Beiersdorf": "BEI.DE", "BELIMO": "BEAN.SW",
     "Bell": "BELL.SW", "Berentzen-Gruppe": "BEZ.DE", "Bertrandt": "BDT.DE", "Beta Systems Software": "BSS.SG", "bet-at-home.com": "ACX.DE",
@@ -109,78 +109,15 @@ dachTickerDict = {
     "Volkswagen (VW) vz.": "VOW3.DE", "Voltabox": "VBX.DE", "Vonovia": "VNA.DE", "Vossloh": "VOS.DE",
     "Wüstenrot Württembergische": "WUW.DE", "WACKER CHEMIE": "WCH.DE", "Wacker Neuson": "WAC.DE", "WashTec": "WSU.DE", "Westwing": "WEW.DE",
     "Wienerberger": "WIE.VI", "Wolftank-Adisa": "WOLF.VI", "YOC": "YOC.DE", "Ypsomed": "YPSN.SW", "Zalando": "ZAL.DE", "ZEAL Network": "TIMA.DE", 
-    "Zehnder A": "ZEHN.SW", "zooplus": "ZO1.DE", "ZUMTOBEL": "ZAG.VI", "u-blox": "UBXN.SW", "Vitesco Technologies": "VTSC.DE", "IONOS": "IOS.DE"}
-sdaxTickerDict = {stock_name: ticker for stock_name, ticker in dachTickerDict.items() if stock_name in [
-    "1&1 AG", "adesso SE", "ADTRAN Holdings Inc.", "Adtran Networks SE", "AMADEUS FIRE AG", "Aroundtown Property Hldgs S.A.",
-    "Atoss Software AG", "AUTO1 Group SE", "BayWa AG vink. Namens-Aktien", "Bilfinger SE", "Borussia Dortmund GmbH&Co.KGaA",
-    "CANCOM SE", "CECONOMY AG", "CEWE Stiftung & Co. KGaA", "CompuGroup Medical SE & Co.KGaA", "Dermapharm Holding SE",
-    "Deutsche Beteiligungs AG", "Deutsche Pfandbriefbank AG", "Deutsche Wohnen SE", "DEUTZ AG", "Drägerwerk AG & Co. KGaA VZ",
-    "DWS Group GmbH & Co. KGaA", "Eckert & Ziegler Str.-u.Med.AG", "Elmos Semiconductor SE", "Energiekontor AG", "Fielmann Group AG",
-    "flatexDEGIRO AG", "GFT Technologies SE", "Grand City Properties S.A.", "GRENKE AG", "HAMBORNER REIT AG", "Heidelberger Druckmaschinen AG",
-    "Hornbach Holding AG&Co.KGaA", "Hypoport SE", "INDUS Holding AG", "IONOS Group SE", "JOST Werke SE", "Klöckner & Co SE",
-    "Kontron AG", "KRONES AG", "KWS SAAT SE & Co. KGaA", "METRO AG", "MorphoSys AG", "Nagarro SE", "New Work SE", "NORMA Group SE",
-    "PATRIZIA SE", "Pfeiffer Vacuum Technology AG", "PNE AG", "PVA TePla AG", "SAF HOLLAND SE", "Salzgitter AG", "Schaeffler AG VZ",
-    "secunet Security Networks AG", "SFC Energy AG", "SGL CARBON SE", "Siltronic AG", "Sto SE & Co. KGaA", "STRATEC SE", "Südzucker AG",
-    "SYNLAB AG", "SÜSS MicroTec SE", "thyssenkrupp nucera AG&Co.KGaA", "TRATON SE", "VARTA AG", "VERBIO Vereinigt.BioEnergie AG",
-    "Vossloh AG", "Wacker Neuson SE", "Wüstenrot& Württembergische AG", "Zeal Network SE"]}
-aiTickerDict = {
-    "NVIDIA Corporation": "NVDA",
-    "Alphabet Inc. (Google)": "GOOGL",
-    "Microsoft Corporation": "MSFT",
-    "International Business Machines Corporation (IBM)": "IBM",
-    "Amazon.com, Inc.": "AMZN",
-    "Meta Platforms, Inc.": "META",
-    "Salesforce.com, Inc.": "CRM",
-    "Intel Corporation": "INTC",
-    "Advanced Micro Devices, Inc.": "AMD",
-    "Baidu, Inc.": "BIDU",
-    "Tencent Holdings Limited": "0700.HK",
-    "Alibaba Group Holding Limited": "BABA",
-    "SAP SE": "SAP",
-    "Oracle Corporation": "ORCL",
-    "Siemens AG": "SIE.DE",
-    "ABB Ltd": "ABB",
-    "Honeywell International Inc.": "HON",
-    "Qualcomm Incorporated": "QCOM",
-    "Splunk Inc.": "SPLK",
-    "Palantir Technologies Inc.": "PLTR",
-    "C3.ai, Inc.": "AI",
-    "UiPath Inc.": "PATH",
-    "Teradata Corporation": "TDC",
-    "Micron Technology, Inc.": "MU",
-    "Snowflake Inc.": "SNOW",
-    "Twilio Inc.": "TWLO",
-    "DocuSign, Inc.": "DOCU",
-    "Zoom Video Communications, Inc.": "ZM",
-    "Roblox Corporation": "RBLX",
-    "Autodesk, Inc.": "ADSK",
-    "Tesla, Inc.": "TSLA",
-    "NICE Ltd.": "NICE",
-    "Zebra Technologies Corporation": "ZBRA",
-    "Xilinx, Inc.": "XLNX",
-    "CrowdStrike Holdings, Inc.": "CRWD",
-    "Zscaler, Inc.": "ZS",
-    "ServiceNow, Inc.": "NOW",
-    "Workday, Inc.": "WDAY"}
-noTicker = [
-    "Fabasoft", "Garmin", "Pierer Mobility (ex KTM Industries)",
-    "QIAGEN", "Redcare Pharmacy", "Siemens Energy", "SAF-HOLLAND", "Deufol", "Wild Bunch", "Limes Schlosskliniken",
-    "centrotherm international", "M1 Kliniken", "FUCHS PETROLUB", "CHAPTERS Group", "Zapf Creation", "Pulsion Medical Systems", "Implenia"]
-dataPoints = ['beta', 'trailingPE', 'marketCap', 'fiftyTwoWeekLow', 'fiftyTwoWeekHigh',
-    'fiftyDayAverage', 'twoHundredDayAverage', 'currency', 'enterpriseValue',
-    'profitMargins', 'floatShares', 'sharesOutstanding', 'sharesShort', 'bookValue',
-    'priceToBook', 'currentPrice', 'targetHighPrice', 'targetLowPrice', 'targetMeanPrice',
-    'totalCash', 'debtToEquity', 'returnOnAssets', 'returnOnEquity', 'grossProfits',
-    'freeCashflow', 'operatingCashflow', 'earningsGrowth', 'revenueGrowth',
-    'grossMargins', 'ebitdaMargins', 'operatingMargins']
-selectedDataPoints = ['beta', 'trailingPE', 'marketCap', 'fiftyTwoWeekLow', 'fiftyTwoWeekHigh']
-
-# SELECT TICKER UNIVERSE
-selectedTickers = list(dachTickerDict.items())[:55]
-tradeSignals = []
-
-# MAIN
+    "Zehnder A": "ZEHN.SW", "zooplus": "ZO1.DE", "ZUMTOBEL": "ZAG.VI", "u-blox": "UBXN.SW", "Vitesco Technologies": "VTSC.DE", "IONOS": "IOS.DE",
+    "Fabasoft": "FAA.DE", "Garmin": "GRMN", "Pierer Mobility (ex KTM Industries)": "PKTM.VI",
+    "QIAGEN":"QGEN", "Redcare Pharmacy":"RDC.DE", "Siemens Energy":"ENR.DE", "SAF-HOLLAND":"SFQ.DE", "Deufol":"DE1.HM", 
+    "M1 Kliniken": "M12.DE", "FUCHS PETROLUB": "FPE3.DU", "Zapf Creation": "ZPF.HM"}
+selectedDataPoints = ['fiftyTwoWeekHigh', 'fiftyDayAverage', 'twoHundredDayAverage']
+selectedTickers = list(dachTickerDict.items())[:10]
 sampledTickers = [ticker for _, ticker in selectedTickers]
+
+# DEFINE PATTERN & LOOP TROUGH UNIVERSE - KEEP TICKERS ONLY
 for stockName, ticker in dachTickerDict.items():
     if ticker in sampledTickers:
         try:
@@ -190,30 +127,50 @@ for stockName, ticker in dachTickerDict.items():
                 df['lowerBB'] = (df['Close'].rolling(window=trail1).mean() - (df['Close'].rolling(window=trail1).std() * factor1)).round(2)
                 for i in range(1, signalLookback + 1):
                     if (df['Low'].iloc[-i] < df['lowerBB'].shift(1).iloc[-i]) and (df['Volume'].iloc[-i] > (df['volume' + str(trail1)].shift(1).iloc[-i] * factor1)):
-                        tradeSignals.append((stockName, df.index[-i]))
+                        tradeSignalsTickerDate.append((stockName, df.index[-i]))
         except Exception as e:
             print(f"Error downloading data for {stockName} ({ticker}): {e}")
 
 # CLEAN OUT CONSECUTIVE SIGNALS
-cleanedTradeSignals = []
-seenTickers = {}
-for stockName, signalDate in tradeSignals:
+for stockName, signalDate in tradeSignalsTickerDate:
     if stockName not in seenTickers or signalDate - seenTickers[stockName] > signalBlock:
         seenTickers[stockName] = signalDate
         cleanedTradeSignals.append((stockName, signalDate))
-tradeSignals = cleanedTradeSignals
+tradeSignalsTickerDate = cleanedTradeSignals
 
-# GET YFINANCE DATA FOR SIGNAL TICKER
-tradeSignalsData = {s[0]: {'price': yf.download(dachTickerDict[s[0]], start=startDate, end=endDate)} for s in tradeSignals}
-for s in tradeSignals:
-    ticker = dachTickerDict[s[0]]
-    tradeSignalsData[s[0]]['info'] = yf.Ticker(ticker).info
+# YFINANCE data for filtered stocks
+tradeSignalsFullData = {}
+for stockName, signalDate in tradeSignalsTickerDate:
+    ticker = dachTickerDict[stockName]
+    priceData = yf.download(ticker, start=startDate, end=endDate)
+    infoData = {key: yf.Ticker(ticker).info[key] for key in selectedDataPoints}
+    tradeSignalsFullData[stockName] = {'price': priceData, 'info': infoData, 'signals': [signalDate]}
 
-# BACKTEST
-if "backtest" == "backtest":
+# PLOTS
+def createDash():
+    numRows = len(tradeSignalsFullData)
+    subplotTitles = [item for sublist in zip(list(tradeSignalsFullData.keys())[:numRows], [None] * numRows) for item in sublist]
+    fig = make_subplots(
+        rows=numRows, cols=2, column_widths=[0.7, 0.3], shared_xaxes=True, vertical_spacing=0.1, 
+        subplot_titles=subplotTitles, specs=[[{"type": "xy", "secondary_y": True}, {"type": "table"}] for _ in range(numRows)])
+    for i, (stockName, data) in enumerate(list(tradeSignalsFullData.items())[:numRows]):
+        df = data['price']
+        fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', name=f'{stockName} Close', line=dict(color='navy', width=2)), row=i+1, col=1, secondary_y=False)
+        fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name=f'{stockName} Volume', marker=dict(color='lightgrey'), opacity=0.4), row=i+1, col=1, secondary_y=True)
+        tableHeaders = ['Metric', 'Value']
+        tableData = [[dp for dp in selectedDataPoints], [data['info'][dp] if dp in data['info'] else 'N/A' for dp in selectedDataPoints]]
+        fig.add_trace(go.Table(
+            header=dict(values=tableHeaders, fill_color='paleturquoise', align='center', font=dict(color='black', size=12)),
+            cells=dict(values=tableData, fill_color='lavender', align='left', font=dict(color='darkslategray', size=11))), row=i+1, col=2)
+    fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='navy', title_x=0.5, height=300*numRows, showlegend=False)
+    fig.update_xaxes(showline=True, linewidth=2, linecolor='grey', mirror=True, gridcolor='lightgrey')
+    fig.update_yaxes(showline=True, linewidth=2, linecolor='grey', mirror=True, title_text="Price", secondary_y=False)
+    fig.update_yaxes(title_text="Volume", secondary_y=True)
+    fig.show()
+def create3D():
     tradePerformance = {}
-    for stockName, signalDate in tradeSignals:
-        df = tradeSignalsData[stockName]['price']
+    for stockName, signalDate in tradeSignalsTickerDate:
+        df = tradeSignalsFullData[stockName]['price']
         nextDayIndex = df.index[df.index > signalDate]
         if not nextDayIndex.empty:
             nextDayOpen = df.loc[nextDayIndex[0], 'Open']
@@ -227,7 +184,7 @@ if "backtest" == "backtest":
     # PLOT BACKTEST
     dates = [mdates.date2num(performance['date']) for _, performances in tradePerformance.items() for performance in performances]
     performances = [performance['performance'] * 100 for _, performances in tradePerformance.items() for performance in performances]
-    tickerNames = [stockName for stockName, _ in tradeSignals for _ in tradePerformance.get(stockName, [])]
+    tickerNames = [stockName for stockName, _ in tradeSignalsTickerDate for _ in tradePerformance.get(stockName, [])]
     uniqueTickers = sorted(set(tickerNames))
     tickerToNum = {ticker: i for i, ticker in enumerate(uniqueTickers, start=1)}
     tickerNums = [tickerToNum[ticker] for ticker in tickerNames]
@@ -248,25 +205,43 @@ if "backtest" == "backtest":
     for i in range(len(dates)):
         ax.text(dates[i], tickerNums[i], performances[i], tickerNames[i], size=10, zorder=1, color='k')
     plt.show()
+def plot3D():
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
 
-# DASHBOARD
-if "dashboard" == "dashboar":
-    numRows = len(tradeSignalsData)
-    subplotTitles = [item for sublist in zip(list(tradeSignalsData.keys())[:numRows], [None] * numRows) for item in sublist]
-    fig = make_subplots(
-        rows=numRows, cols=2, column_widths=[0.7, 0.3], shared_xaxes=True, vertical_spacing=0.1, 
-        subplot_titles=subplotTitles, specs=[[{"type": "xy", "secondary_y": True}, {"type": "table"}] for _ in range(numRows)])
-    for i, (stockName, data) in enumerate(list(tradeSignalsData.items())[:numRows]):
-        df = data['price']
-        fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', name=f'{stockName} Close', line=dict(color='navy', width=2)), row=i+1, col=1, secondary_y=False)
-        fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name=f'{stockName} Volume', marker=dict(color='lightgrey'), opacity=0.4), row=i+1, col=1, secondary_y=True)
-        tableHeaders = ['Metric', 'Value']
-        tableData = [[dp for dp in selectedDataPoints], [data['info'][dp] if dp in data['info'] else 'N/A' for dp in selectedDataPoints]]
-        fig.add_trace(go.Table(
-            header=dict(values=tableHeaders, fill_color='paleturquoise', align='center', font=dict(color='black', size=12)),
-            cells=dict(values=tableData, fill_color='lavender', align='left', font=dict(color='darkslategray', size=11))), row=i+1, col=2)
-    fig.update_layout(plot_bgcolor='white', paper_bgcolor='white', font_color='navy', title_x=0.5, height=300*numRows, showlegend=False)
-    fig.update_xaxes(showline=True, linewidth=2, linecolor='grey', mirror=True, gridcolor='lightgrey')
-    fig.update_yaxes(showline=True, linewidth=2, linecolor='grey', mirror=True, title_text="Price", secondary_y=False)
-    fig.update_yaxes(title_text="Volume", secondary_y=True)
-    fig.show()
+    xAxisTicker = list(tradeSignalsFullData.keys())
+    yAxisDate = [date.strftime('%Y-%m-%d') for date in tradeSignalsFullData[xAxisTicker[0]]['price'].index.date]
+    zAxisVariable = [tradeSignalsFullData[ticker]['price']['Close'].pct_change().fillna(0).add(1).cumprod().values for ticker in xAxisTicker]
+    zAxisVariable = [np.array(performance) * 100 - 100 for performance in zAxisVariable]
+
+    signalDates = [tradeSignalsFullData[ticker]['signals'] for ticker in xAxisTicker]
+
+    minLength = min(len(yAxisDate), min(len(z) for z in zAxisVariable))
+    yAxisDate, zAxisVariable = yAxisDate[:minLength], [z[:minLength] for z in zAxisVariable]
+
+    displayedDates = np.linspace(0, len(yAxisDate) - 1, 6, dtype=int)
+
+    for i in range(len(xAxisTicker)):
+        ax.plot([i] * len(yAxisDate), list(range(len(yAxisDate))), zAxisVariable[i], color='navy')
+
+        signalIndices = [yAxisDate.index(date.strftime('%Y-%m-%d')) for date in signalDates[i]]
+        ax.scatter([i] * len(signalIndices), signalIndices, zAxisVariable[i][signalIndices], c='gold', marker='o')
+
+    xAxisTicker = [ticker[:3] for ticker in xAxisTicker]
+    yAxisDate = [yAxisDate[i] for i in displayedDates]
+    ax.set_xticks(list(range(len(xAxisTicker))))
+    ax.set_xticklabels(xAxisTicker, rotation=45)
+    ax.set_yticks(displayedDates)
+    ax.set_yticklabels(yAxisDate)
+    ax.set_zlabel('(%)') 
+
+    ax.xaxis.line.set_color('black')
+    ax.yaxis.line.set_color('purple')
+    ax.zaxis.line.set_color('navy')
+
+    plt.tight_layout()
+    plt.show()
+
+plot3D()
+createDash()
+

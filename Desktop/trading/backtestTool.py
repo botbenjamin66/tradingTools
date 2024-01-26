@@ -1,15 +1,16 @@
-##### standard : com = 0.005, spread = 0.003, skid = 0.5, slip = 0.003, interest = 0.01
-##### testSkid / duplicate ed / set up portfolio / tradingLog
+### ENVIROMENT
+mode                                          = 'classicBacktest'
 
-### ENVIRONMENT
-acid                                           = 'ed'
-mode                                           = 'paraloopBacktest'
-trail1, trail2, factor1                        = 140, 5, 2
-nominalFX, buySize, sellSize, maxLeverage      = 100, 1, 1, 1
-backtestStart, backtestEnd, dataInterval       = 2006, 2022, '1d'
-commissions, spread, skid, slippage, interest  = 0.00, 0.00, 0.5, 0.00, 0.00
+### BACKTESTING ENVIRONMENT
+acid                                          = 'ed'
+trail1, trail2, factor1                       = 120, 30, 2
+nominalFX, buySize, sellSize, maxLeverage     = 100, 1, 1, 1
+backtestStart, backtestEnd, dataInterval      = 2018, 2025, '1d'
+commissions, spread, skid, slippage, interest = 0.00, 0.00, 0.5, 0.00, 0.00
 
 from scipy.interpolate import griddata
+from sklearn.metrics import r2_score
+from scipy.optimize import curve_fit
 import matplotlib.ticker as mticker
 import matplotlib.pyplot as plt
 import mplfinance as mpf
@@ -21,8 +22,8 @@ import time
 
 ### INIT
 def initTicker():
-    if acid == 'choice':
-        ticker = ['ETH-USD']
+    if acid == 'btc':
+        ticker = ['BTC-USD']
     elif acid == 'gold':
         ticker = ['GC=F']
     elif acid == 'palantir':
@@ -36,7 +37,7 @@ def initTicker():
     return ticker
 def initParameter():
     if mode == 'paraloopBacktest':
-        longEntry, longExit, shortEntry, shortExit = range(20, 220, 50), range(5, 105, 25), range(20, 220, 50), range(5, 105, 25)
+        longEntry, longExit, shortEntry, shortExit = range(20, 220, 40), range(5, 105, 20), range(20, 100, 40), range(5, 45, 20)
         return longEntry, longExit, shortEntry, shortExit
     else:
         longEntry, longExit, shortEntry, shortExit = trail1, trail2, trail1, trail2
@@ -101,8 +102,8 @@ def basicData():
         dfBasic = pd.read_csv('/Users/benjaminsuermann/Desktop/trading/edGoldData.csv', sep = ';')
         dfBasic['Date'] = pd.to_datetime(dfBasic['Date'], format='%d.%m.%y')
         dfBasic = dfBasic.set_index('Date')
-        dfBasic = dfBasic.iloc[:5000]
-        dfBasic['marketReturns'] = dfBasic[triggerPrice2].pct_change()
+        dfBasic = dfBasic.iloc[:700]
+        dfBasic['marketReturns'] = dfBasic[triggerPrice].pct_change()
         return dfBasic
     else:
         try:
@@ -114,7 +115,7 @@ def basicData():
 
         # KICK OUT WEEKENDS
         dfBasic = dfBasic[dfBasic.index.weekday < 5].copy(deep=True)
-        dfBasic['marketReturns'] = dfBasic[triggerPrice2].pct_change()
+        dfBasic['marketReturns'] = dfBasic[triggerPrice].pct_change()
 
         print(f"NaN percentage: {nanPercentage}%")
         return dfBasic
@@ -133,15 +134,15 @@ def floatFeatureData():
 
     dfFloatFeature['volume' + str(trail1)]       = dfFloatFeature['Volume'].rolling(window=trail1).mean()
     dfFloatFeature['volume' + str(trail2)]       = dfFloatFeature['Volume'].rolling(window=trail2).mean()
-    dfFloatFeature['ema' + str(trail1)]          = dfFloatFeature[triggerPrice1].ewm(span=trail1).mean()
-    dfFloatFeature['ema' + str(trail2)]          = dfFloatFeature[triggerPrice1].ewm(span=trail2).mean()
-    dfFloatFeature['er' + str(trail1)]           = dfFloatFeature[triggerPrice1].diff(trail1).abs() / dfFloatFeature[triggerPrice1].diff().abs().rolling(window=trail1).sum()
-    dfFloatFeature['er' + str(trail2)]           = dfFloatFeature[triggerPrice1].diff(trail2).abs() / dfFloatFeature[triggerPrice1].diff().abs().rolling(window=trail2).sum()
+    dfFloatFeature['ema' + str(trail1)]          = dfFloatFeature[triggerPrice].ewm(span=trail1).mean()
+    dfFloatFeature['ema' + str(trail2)]          = dfFloatFeature[triggerPrice].ewm(span=trail2).mean()
+    dfFloatFeature['er' + str(trail1)]           = dfFloatFeature[triggerPrice].diff(trail1).abs() / dfFloatFeature[triggerPrice].diff().abs().rolling(window=trail1).sum()
+    dfFloatFeature['er' + str(trail2)]           = dfFloatFeature[triggerPrice].diff(trail2).abs() / dfFloatFeature[triggerPrice].diff().abs().rolling(window=trail2).sum()
    
     dfFloatFeature['upperBb'] = dfFloatFeature['Close'].rolling(window=trail1).mean() + (dfFloatFeature['Close'].rolling(window=trail1).std() * factor1)
     dfFloatFeature['lowerBb'] = dfFloatFeature['Close'].rolling(window=trail1).mean() - (dfFloatFeature['Close'].rolling(window=trail1).std() * factor1)
 
-    dfFloatFeature['tr'] = pd.concat([dfFloatFeature['High'] - dfFloatFeature['Low'], (dfFloatFeature['High'] - dfFloatFeature[triggerPrice1]).abs(), (dfFloatFeature['Low'] - dfFloatFeature[triggerPrice1]).abs()], axis=1).max(axis=1)
+    dfFloatFeature['tr'] = pd.concat([dfFloatFeature['High'] - dfFloatFeature['Low'], (dfFloatFeature['High'] - dfFloatFeature[triggerPrice]).abs(), (dfFloatFeature['Low'] - dfFloatFeature[triggerPrice]).abs()], axis=1).max(axis=1)
     dfFloatFeature['atr' + str(trail1)] = dfFloatFeature['tr'].rolling(window=trail1).mean()
     dfFloatFeature['atr' + str(trail2)] = dfFloatFeature['tr'].rolling(window=trail2).mean()
 
@@ -155,7 +156,7 @@ def boolFeatureData():
     signalPause                     = 0
     dfBoolFeature                   = pd.concat([dfBasic, dfFloatFeature], axis=1)
     
-    dfBoolFeature['priceTrend']     = np.where((dfBoolFeature[triggerPrice1] > dfFloatFeature['ema' + str(trail1)]) & (dfFloatFeature['ema' + str(trail1)] > dfFloatFeature['ema' + str(trail2)]), 1, np.where((dfBoolFeature[triggerPrice1] < dfFloatFeature['ema' + str(trail1)]) & (dfFloatFeature['ema' + str(trail1)] < dfFloatFeature['ema' + str(trail2)]), -1, np.nan))
+    dfBoolFeature['priceTrend']     = np.where((dfBoolFeature[triggerPrice] > dfFloatFeature['ema' + str(trail1)]) & (dfFloatFeature['ema' + str(trail1)] > dfFloatFeature['ema' + str(trail2)]), 1, np.where((dfBoolFeature[triggerPrice] < dfFloatFeature['ema' + str(trail1)]) & (dfFloatFeature['ema' + str(trail1)] < dfFloatFeature['ema' + str(trail2)]), -1, np.nan))
     dfBoolFeature['atrTrend']       = np.where(dfFloatFeature['atr' + str(trail1)] > dfFloatFeature['atr' + str(trail2)], 1, np.where(dfFloatFeature['atr' + str(trail1)] < dfFloatFeature['atr' + str(trail2)], -1, np.nan))
     dfBoolFeature['erTrend']        = np.where(dfFloatFeature['er' + str(trail1)] > dfFloatFeature['er' + str(trail2)], 1, np.where(dfFloatFeature['er' + str(trail1)] < dfFloatFeature['er' + str(trail2)], -1, np.nan))
     dfBoolFeature['volumeTrend']    = np.where((dfBoolFeature['Volume'] > dfFloatFeature['volume' + str(trail1)]) & (dfFloatFeature['volume' + str(trail1)] > dfFloatFeature['volume' + str(trail2)]), 1, np.where((dfBoolFeature['Volume'] < dfFloatFeature['volume' + str(trail1)]) & (dfFloatFeature['volume' + str(trail1)] < dfFloatFeature['volume' + str(trail2)]), -1, np.nan))
@@ -173,10 +174,10 @@ def tradingData(longEntry, longExit, shortEntry, shortExit):
     dfTrading = pd.concat([dfBasic, dfFloatFeature, dfBoolFeature], axis=1)
 
     # SIGNALS
-    dfTrading['longEntry'] = dfBasic[triggerPrice1].gt(dfBasic[triggerPrice1].shift(1).rolling(window=longEntry).max())
-    dfTrading['longExit'] = dfBasic[triggerPrice1].lt(dfBasic[triggerPrice1].shift(1).rolling(window=longExit).min())
-    dfTrading['shortEntry'] = dfBasic[triggerPrice1].lt(dfBasic[triggerPrice1].shift(1).rolling(window=shortEntry).min())
-    dfTrading['shortExit'] = dfBasic[triggerPrice1].gt(dfBasic[triggerPrice1].shift(1).rolling(window=shortExit).max())
+    dfTrading['longEntry'] = dfBasic[triggerPrice].gt(dfBasic[triggerPrice].shift(1).rolling(window=longEntry).max())
+    dfTrading['longExit'] = dfBasic[triggerPrice].lt(dfBasic[triggerPrice].shift(1).rolling(window=longExit).min())
+    dfTrading['shortEntry'] = dfBasic[triggerPrice].lt(dfBasic[triggerPrice].shift(1).rolling(window=shortEntry).min())
+    dfTrading['shortExit'] = dfBasic[triggerPrice].gt(dfBasic[triggerPrice].shift(1).rolling(window=shortExit).max())
 
     # EXPOSURE
     if not (dfTrading['longEntry'].any() or dfTrading['longExit'].any()):
@@ -213,9 +214,10 @@ def returnData():
     dfReturn = pd.concat([dfBasic, dfTrading], axis=1)
     fees = commissions + spread + slippage
     deltaDays = (dfBasic.index[-1] - dfBasic.index[0]).days
+    years, trDaysYear = (deltaDays / 365.25), 252
 
     # COSTS
-    dfReturn['pfReturnsBrutto'] = dfTrading['exposure'].shift() * dfBasic[triggerPrice2].pct_change()
+    dfReturn['pfReturnsBrutto'] = dfTrading['exposure'].shift() * dfBasic[triggerPrice].pct_change()
     dfReturn['interestCost'] = abs(dfTrading['exposure']) * interest * (dfTrading.index.to_series().diff().dt.days / 365)
     dfReturn['transactionCost'] = abs(dfTrading['deltaExposure']) * fees
     dfReturn['riskfreeCost'] = interest * (dfTrading.index.to_series().diff().dt.days / 365)
@@ -234,8 +236,8 @@ def returnData():
 
     # RETURNS LONG VS. SHORT
     dfReturn['longReturnsAbs'], dfReturn['shortReturnsAbs'] = np.nan, np.nan
-    dfReturn['longReturnsAbs'] = np.where((dfTrading['exposure'].shift() > 0) & (dfTrading['exposure'] <= 0), dfBasic[triggerPrice2] - dfReturn['costBasis'].shift(), np.nan)
-    dfReturn['shortReturnsAbs'] = np.where((dfTrading['exposure'].shift() < 0) & (dfTrading['exposure'] >= 0), (dfBasic[triggerPrice2] - dfReturn['costBasis'].shift()) * (-1), np.nan)
+    dfReturn['longReturnsAbs'] = np.where((dfTrading['exposure'].shift() > 0) & (dfTrading['exposure'] <= 0), dfBasic[triggerPrice] - dfReturn['costBasis'].shift(), np.nan)
+    dfReturn['shortReturnsAbs'] = np.where((dfTrading['exposure'].shift() < 0) & (dfTrading['exposure'] >= 0), (dfBasic[triggerPrice] - dfReturn['costBasis'].shift()) * (-1), np.nan)
     dfReturn['longReturnsPerc'] = np.where(~np.isnan(dfReturn['longReturnsAbs']), dfReturn['longReturnsAbs'] / dfReturn['costBasis'].shift(), np.nan)
     dfReturn['shortReturnsPerc'] = np.where(~np.isnan(dfReturn['shortReturnsAbs']), dfReturn['shortReturnsAbs'] / dfReturn['costBasis'].shift(), np.nan)
 
@@ -257,7 +259,7 @@ def statsData():
     years, trDaysYear       = (deltaDays / 365.25), 252
 
     # KEY METRICS
-    cagr                    = ((dfReturn['nominalFX'].iloc[-1] / dfReturn['nominalFX'].iloc[0]) ** (1 / years)) - 1
+    cagr                    = ((dfReturn['nominalFX'].iloc[-1] / dfReturn['nominalFX'].iloc[1]) ** (1 / years)) - 1
     drawdown                = np.abs((dfReturn['nominalFX'] / dfReturn['nominalFX'].expanding(min_periods=1).max() - 1).min())
     bliss                   = max(cagr / drawdown, 0)
     cagrAcid                = ((dfBasic['Close'].iloc[-1] / dfBasic['Close'].iloc[0]) ** (1 / years)) - 1
@@ -337,30 +339,33 @@ def store1ticker1set():
             'bliss': dict1ticker1set['bliss']}
 
 ### PLOT
-def plotBasic(): 
-    mpf.plot(dfBasic, type='line', style='yahoo', volume=False, show_nontrading=False, grid=False, tight_layout=True)
+def plotBasic():
+    mpf.plot(dfBasic, type='candle', style='charles', title=f'{ticker} from {dfBasic.index[0].strftime("%Y-%m-%d")} to {dfBasic.index[-1].strftime("%Y-%m-%d")}')
 def plotSignal():
     fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(10, 15))
     xmin, xmax = min(dfBasic.index.min(), dfTrading.index.min()), max(dfBasic.index.max(), dfTrading.index.max())
 
     axes[0].plot(dfBasic.index, dfBasic['Close'], color='black')
 
-    axes[0].scatter(dfTrading[(dfTrading['longEntry'] == 1) & (dfTrading['deltaExposure'] > 0)].index, dfBasic[(dfTrading['longEntry'] == 1) & (dfTrading['deltaExposure'] > 0)]['Close'], color='green', marker='*', s=150)
-    axes[0].scatter(dfTrading[(dfTrading['longExit'] == 1) & (dfTrading['deltaExposure'] < 0)].index, dfBasic[(dfTrading['longExit'] == 1) & (dfTrading['deltaExposure'] < 0)]['Close'], color='blue', marker='_', s=150)
+    axes[0].scatter(dfTrading[(dfTrading['longEntry'] == 1) & (dfTrading['deltaExposure'] > 0)].index, dfBasic[(dfTrading['longEntry'] == 1) & (dfTrading['deltaExposure'] > 0)]['Close'], color='green', marker='*', s=100)
+    axes[0].scatter(dfTrading[(dfTrading['longExit'] == 1) & (dfTrading['deltaExposure'] < 0)].index, dfBasic[(dfTrading['longExit'] == 1) & (dfTrading['deltaExposure'] < 0)]['Close'], color='blue', marker='_', s=100)
     axes[0].set_title('Long Entry and Exit Signals', fontweight='bold')
-    axes[0].scatter(dfTrading[(dfTrading['shortEntry'] == 1) & (dfTrading['deltaExposure'] < 0)].index, dfBasic.loc[(dfTrading[(dfTrading['shortEntry'] == 1) & (dfTrading['deltaExposure'] != 0)].index), 'Close'], color='red', marker='*', s=150)
-    axes[0].scatter(dfTrading[(dfTrading['shortExit'] == 1) & (dfTrading['deltaExposure'] != 0) & (dfTrading['shortEntry'] == 0)].index, dfBasic.loc[(dfTrading[(dfTrading['shortExit'] == 1) & (dfTrading['deltaExposure'] != 0)].index), 'Close'], color='navy', marker='_', s=150)
+    axes[0].scatter(dfTrading[(dfTrading['shortEntry'] == 1) & (dfTrading['deltaExposure'] < 0)].index, dfBasic.loc[(dfTrading[(dfTrading['shortEntry'] == 1) & (dfTrading['deltaExposure'] != 0)].index), 'Close'], color='red', marker='*', s=100)
+    axes[0].scatter(dfTrading[(dfTrading['shortExit'] == 1) & (dfTrading['deltaExposure'] != 0) & (dfTrading['shortEntry'] == 0)].index, dfBasic.loc[(dfTrading[(dfTrading['shortExit'] == 1) & (dfTrading['deltaExposure'] != 0)].index), 'Close'], color='navy', marker='_', s=100)
     axes[0].set_title('Short Entry and Exit Signals', fontweight='bold')
 
     ax2 = axes[1].twinx()
     ax2.plot(dfTrading.index, dfTrading['exposure'], color='navy', alpha=0.3, linewidth=2)
-    ax2.set_ylabel('Exposure')
+    ax2.set_ylabel('Exposure', fontweight='bold')
+    ax2.set_ylim([-maxLeverage, maxLeverage])
+    ax2.set_yticks(list(range(-maxLeverage-1, maxLeverage+2, min(buySize, sellSize))))
+
     axes[1].plot(dfBasic.index, dfBasic['Close'], color='black', linewidth=1.5)
     axes[1].plot(dfTrading.index, np.where((dfReturn['costBasis'] != 0) & (dfTrading['exposure'] > 0), np.abs(dfReturn['costBasis']), np.nan), color='green', linestyle='--', linewidth=1.0)
     axes[1].plot(dfTrading.index, np.where((dfReturn['costBasis'] != 0) & (dfTrading['exposure'] < 0), np.abs(dfReturn['costBasis']), np.nan), color='red', linestyle='--', linewidth=1.0)
     axes[1].plot(dfBasic.index, np.where(dfTrading['exposure'] > 0, dfBasic['Close'], np.nan), color='green', linewidth=1.0)
     axes[1].plot(dfBasic.index, np.where(dfTrading['exposure'] < 0, dfBasic['Close'], np.nan), color='red', linewidth=1.0)
-    axes[1].set_title('Entry Levels')
+    axes[1].set_title('Entry Levels', fontweight='bold')
 
     longValidIdx = dfStats.index[(dfReturn['longReturnsPerc'] < 0) | (dfReturn['longReturnsPerc'] > 0)]
     shortValidIdx = dfStats.index[(dfReturn['shortReturnsPerc'] < 0) | (dfReturn['shortReturnsPerc'] > 0)]
@@ -491,70 +496,73 @@ def plotCorrScatter():
     plt.subplots_adjust(hspace=0.4)
     plt.show()
 
+
+
 ### MAIN
 if __name__ == "__main__":
 
-    tickers, annFactor                                                       = initTicker(), annualizationFactor()
-    longEntry, longExit, shortEntry, shortExit                               = initParameter()
-    triggerPrice1, triggerPrice2                                             = 'Close', 'Close'
-    dict1ticker1set, dict1tickerXsets, dict1ticker1bestSet, dictXticker1set  = {}, {}, {}, {}
+     if mode in ('classicBacktest', 'paraloopBacktest', 'featureTesting', 'concatFeatureTesting'):
+        tickers, annFactor                                                      = initTicker(), annualizationFactor()
+        longEntry, longExit, shortEntry, shortExit                              = initParameter()
+        triggerPrice1, triggerPrice                                             = 'Close', 'Close'
+        dict1ticker1set, dict1tickerXsets, dict1ticker1bestSet, dictXticker1set = {}, {}, {}, {}
 
-    for ticker in tickers:
-        print(ticker)
+        for ticker in tickers:
+            print(ticker)
 
-        if mode == 'classicBacktest':
-            dfBasic                                                          = basicData()
-            dfTargetFeature                                                  = targetFeatureData()
-            dfFloatFeature                                                   = floatFeatureData()
-            dfBoolFeature                                                    = boolFeatureData()
-            dfTrading                                                        = tradingData(longEntry, longExit, shortEntry, shortExit)
-            dfReturn                                                         = returnData()
-            dfStats, dict1ticker1set                                         = statsData()
+            if mode == 'classicBacktest':
+                dfBasic                                                          = basicData()
+                dfTargetFeature                                                  = targetFeatureData()
+                dfFloatFeature                                                   = floatFeatureData()
+                dfBoolFeature                                                    = boolFeatureData()
+                dfTrading                                                        = tradingData(longEntry, longExit, shortEntry, shortExit)
+                dfReturn                                                         = returnData()
+                dfStats, dict1ticker1set                                         = statsData()
 
-            #plotBasic()
-            #plotSignal()
-            #plotReturn()
-            #plotHistogram()
-            plotTable()
-        if mode == 'paraloopBacktest':
-            startTime = time.time()
-            dfBasic                                                           = basicData()
-            dfTargetFeature                                                   = targetFeatureData()
-            dfFloatFeature                                                    = floatFeatureData()
-            dfBoolFeature                                                     = boolFeatureData()
-            longEntry, longExit, shortEntry, shortExit                        = initParameter()
-            for a in longEntry:
-                for b in longExit:
-                    for c in shortEntry:
-                        for d in shortExit:
-                            dfTrading = tradingData(a, b, c, d)
-                            dfReturn = returnData()
-                            dfStats, dict1ticker1set = statsData()
+                plotBasic()
+                plotSignal()
+                plotReturn()
+                plotHistogram()
+                plotTable()
+            if mode == 'paraloopBacktest':
+                startTime = time.time()
+                dfBasic                                                           = basicData()
+                dfTargetFeature                                                   = targetFeatureData()
+                dfFloatFeature                                                    = floatFeatureData()
+                dfBoolFeature                                                     = boolFeatureData()
+                longEntry, longExit, shortEntry, shortExit                        = initParameter()
+                for a in longEntry:
+                    for b in longExit:
+                        for c in shortEntry:
+                            for d in shortExit:
+                                dfTrading = tradingData(a, b, c, d)
+                                dfReturn = returnData()
+                                dfStats, dict1ticker1set = statsData()
 
-                            store1tickerXsets()
-            elapsedTime = time.time() - startTime
-            print(f"Time elapsed: {elapsedTime:.2f} seconds")
-            
-            plotTickerLoop3D()
-            #print(dict1ticker1bestSet)
-        if mode in ('featureTesting', 'concatFeatureTesting'):
-            dfBasic                                          = basicData()
-            dfTargetFeature                                  = targetFeatureData()
-            dfFloatFeature                                   = floatFeatureData()
-            dfBoolFeature                                    = boolFeatureData()
-            dfFeatureTest                                    = pd.concat([dfTargetFeature.shift(-trail1), dfFloatFeature.pct_change(), dfBoolFeature], axis=1).dropna()
+                                store1tickerXsets()
+                elapsedTime = time.time() - startTime
+                print(f"Time elapsed: {elapsedTime:.2f} seconds")
+                
+                plotTickerLoop3D()
+                #print(dict1ticker1bestSet)
+            if mode in ('featureTesting', 'concatFeatureTesting'):
+                dfBasic                                          = basicData()
+                dfTargetFeature                                  = targetFeatureData()
+                dfFloatFeature                                   = floatFeatureData()
+                dfBoolFeature                                    = boolFeatureData()
+                dfFeatureTest                                    = pd.concat([dfTargetFeature.shift(-trail1), dfFloatFeature.pct_change(), dfBoolFeature], axis=1).dropna()
 
-            cutOff = 0
-            dfFeatureTest[dfFeatureTest.apply(lambda x: x.isin(x.nlargest(cutOff)), axis=0)] = np.nan
-            dfFeatureTest[dfFeatureTest.apply(lambda x: x.isin(x.nsmallest(cutOff)), axis=0)] = np.nan
-            dfFeatureTest.replace([np.inf, -np.inf], np.nan, inplace=True)
-            dfFeatureTest.ffill(inplace=True)
+                cutOff = 0
+                dfFeatureTest[dfFeatureTest.apply(lambda x: x.isin(x.nlargest(cutOff)), axis=0)] = np.nan
+                dfFeatureTest[dfFeatureTest.apply(lambda x: x.isin(x.nsmallest(cutOff)), axis=0)] = np.nan
+                dfFeatureTest.replace([np.inf, -np.inf], np.nan, inplace=True)
+                dfFeatureTest.ffill(inplace=True)
 
-            print(dfFeatureTest)
-            print([(col,idx)for idx,col in enumerate(dfTargetFeature.columns)])
-            print([(col,idx)for idx,col in enumerate(dfFloatFeature.columns)])
-            print([(col,idx)for idx,col in enumerate(dfBoolFeature.columns)])
-            print([(col,idx)for idx,col in enumerate(dfFeatureTest.columns)])
+                print(dfFeatureTest)
+                print([(col,idx)for idx,col in enumerate(dfTargetFeature.columns)])
+                print([(col,idx)for idx,col in enumerate(dfFloatFeature.columns)])
+                print([(col,idx)for idx,col in enumerate(dfBoolFeature.columns)])
+                print([(col,idx)for idx,col in enumerate(dfFeatureTest.columns)])
 
-            plotCorrMatrix()
-            plotCorrScatter()
+                plotCorrMatrix()
+                plotCorrScatter()
