@@ -102,7 +102,7 @@ def basicData():
         dfBasic = pd.read_csv('/Users/benjaminsuermann/Desktop/trading/edGoldData.csv', sep = ';')
         dfBasic['Date'] = pd.to_datetime(dfBasic['Date'], format='%d.%m.%y')
         dfBasic = dfBasic.set_index('Date')
-        dfBasic = dfBasic.iloc[:700]
+        dfBasic = dfBasic.iloc[:2700]
         dfBasic['marketReturns'] = dfBasic[triggerPrice].pct_change()
         return dfBasic
     else:
