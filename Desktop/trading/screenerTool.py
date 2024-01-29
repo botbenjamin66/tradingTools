@@ -1,5 +1,4 @@
-### pipes, htf, cwh, livBol, vcp, 21d200d
-
+# PERF AGAINST SDAX
 from dash.dependencies import Input, Output
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
@@ -13,13 +12,63 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
-signalLookback, signalBlock, trail1, trail2, factor1 = 90, timedelta(days=0), 15, 50, 2
-triggerPrice, tradePrice = 'Close', 'Open'
-endDate, startDate = datetime.now(), datetime.now() - timedelta(days=150)
-tradeSignalsTickerDate, cleanedTradeSignals, seenTickers = [], [], {}
+# PATTERNS
+def indicatorStorage():
+    df['volume' + str(trail1)] = df['Volume'].rolling(window=trail1).mean().round(1)
+    df['volume' + str(trail2)] = df['Volume'].rolling(window=trail2).mean().round(1)
+    df['tr'] = pd.concat([df['High'] - df['Low'], (df['High'] - df[triggerPrice]).abs(), (df['Low'] - df[triggerPrice]).abs()], axis=1).max(axis=1)
+    df['atr' + str(trail1)] = df['tr'].rolling(window=trail1).mean()
+    df['atr' + str(trail2)] = df['tr'].rolling(window=trail2).mean()
+    df['ema' + str(trail1)] = df[triggerPrice].ewm(span=trail1).mean()
+    df['ema' + str(trail2)] = df[triggerPrice].ewm(span=trail2).mean()
+    df['er' + str(trail1)] = df[triggerPrice].diff(trail1).abs() / df[triggerPrice].diff().abs().rolling(window=trail1).sum()
+    df['er' + str(trail2)] = df[triggerPrice].diff(trail2).abs() / df[triggerPrice].diff().abs().rolling(window=trail2).sum()
+    df['upperBb'] = df['Close'].rolling(window=trail1).mean() + (df['Close'].rolling(window=trail1).std() * factor1)
+    df['lowerBb'] = df['Close'].rolling(window=trail1).mean() - (df['Close'].rolling(window=trail1).std() * factor1)
+    df['macd' + str(trail1) + '-' + str(trail2)] = df['ema' + str(trail1)] / df['ema' + str(trail2)] - 1
+    df['noise' + str(trail1) + '-' + str(trail2)] = np.log((df['er' + str(trail1)] + 1e-6) / (df['er' + str(trail2)] + 1e-6))
+    df['volumedriven' + str(trail1) + '-' + str(trail2)] = (df['volume' + str(trail1)] / df['volume' + str(trail2)]) / df['er' + str(trail1)].rolling(window=trail1).mean()
+def livReversal():
+    df['volume' + str(trail1)] = df['Volume'].rolling(window=trail1).mean().round(0)
+    df['lowerBB'] = (df['Close'].rolling(window=trail1).mean() - (df['Close'].rolling(window=trail1).std() * factor1)).round(2)
+    for i in range(1 + trail2, len(df)):
+        if (df['Low'].iloc[i] < df['lowerBB'].shift(1).iloc[i]) and (df['Volume'].iloc[i] > (df['volume' + str(trail1)].shift(1).iloc[i] * factor1)):
+            tradeSignalsTickerDate.append((stockName, df.index[i]))
+def miniVcp():
+    df['volume' + str(trail1)] = df['Volume'].rolling(window=trail1).mean().round(1)
+    df['volume' + str(trail2)] = df['Volume'].rolling(window=trail2).mean().round(1)
+    df['tr'] = pd.concat([df['High'] - df['Low'], (df['High'] - df[triggerPrice]).abs(), (df['Low'] - df[triggerPrice]).abs()], axis=1).max(axis=1)
+    df['atr' + str(trail1)] = df['tr'].rolling(window=trail1).mean()
+    df['atr' + str(trail2)] = df['tr'].rolling(window=trail2).mean()
+    df['volatility' + str(trail1)] = df['Close'].rolling(window=trail1).std().round(1)
+    df['volatility' + str(trail2)] = df['Close'].rolling(window=trail2).std().round(1)
+    df['ema' + str(trail1)] = df[triggerPrice].ewm(span=trail1).mean()
+    df['ema' + str(trail2)] = df[triggerPrice].ewm(span=trail2).mean()
+    df['er' + str(trail1)] = df[triggerPrice].diff(trail1).abs() / df[triggerPrice].diff().abs().rolling(window=trail1).sum()
+    df['er' + str(trail2)] = df[triggerPrice].diff(trail2).abs() / df[triggerPrice].diff().abs().rolling(window=trail2).sum()
+    df['upperBb' + str(trail1)] = df['Close'].rolling(window=trail1).mean() + (df['Close'].rolling(window=trail1).std() * factor1)
+    df['upperBb' + str(trail2)] = df['Close'].rolling(window=trail2).mean() + (df['Close'].rolling(window=trail2).std() * factor1)
 
-# TICKER UNIVERSE
-dachTickerDict = {
+    for i in range(1 + trail2, len(df)):
+        if (
+            #df['Close'].iloc[i] > df['upperBb' + str(trail1)].shift(1).iloc[i] and
+            #df['Close'].iloc[i] > df['upperBb' + str(trail2)].shift(1).iloc[i] and
+            #(df['volume' + str(trail1)].iloc[i] < df['volume' + str(trail2)].iloc[i]) and
+            #(df['volatility' + str(trail1)].iloc[i] < df['volatility' + str(trail2)].iloc[i]) and
+            #(df['atr' + str(trail1)].iloc[i] < df['atr' + str(trail2)].iloc[i]) and
+            #(df['Volume'].iloc[i] > (df['volume' + str(trail1)].shift(1).iloc[i] * factor1)) and
+            (df['ema' + str(trail1)].iloc[i] > df['ema' + str(trail2)].iloc[i]) #and
+            #(df['er' + str(trail1)].iloc[i] < df['er' + str(trail2)].iloc[i])
+            ):
+
+            tradeSignalsTickerDate.append((stockName, df.index[i]))
+
+# ENVIRONMENT
+endDate, startDate, signalBlock = datetime.now() - timedelta(days=0), datetime.now() - timedelta(days=100), timedelta(days=5)
+tradeSignalsTickerDate, seenTickers, cleanedTradeSignals, tradeSignalsFullData, patternPerformance, tradePerformance = [], {}, [], {}, {}, {}
+triggerPrice, tradePrice                                                                                             = 'Close', 'Open'
+trail1, trail2, factor1, progStart, progEnd                                                                          = 20, 50, 2, 1, 50
+dachTickerDict                                                                                                       = {
     "1&1": "1U1.DE", "2G Energy": "2GB.DE", "3U": "UUU.DE", "7C Solarparken": "HRPK.DE", "ÖKOWORLD (ex Versiko)": "VVV3.DE",
     "Österreichische Post": "POST.VI", "ABB (Asea Brown Boveri)": "ABBN.SW", "ABO Wind": "AB9.DE", "Adecco SA": "ADEN.SW",
     "adesso": "ADN1.DE", "adidas": "ADS.DE", "Adler Real Estate": "ADJ.DE", "ADM Hamburg": "OEL.SG", "ADVA Optical Networking": "ADV.DE",
@@ -116,71 +165,67 @@ dachTickerDict = {
     "Fabasoft": "FAA.DE", "Garmin": "GRMN", "Pierer Mobility (ex KTM Industries)": "PKTM.VI",
     "QIAGEN":"QGEN", "Redcare Pharmacy":"RDC.DE", "Siemens Energy":"ENR.DE", "SAF-HOLLAND":"SFQ.DE", "Deufol":"DE1.HM", 
     "M1 Kliniken": "M12.DE", "FUCHS PETROLUB": "FPE3.DU", "Zapf Creation": "ZPF.HM"}
-selectedTickers = list(dachTickerDict.items())[:50]
-sampledTickers = [ticker for _, ticker in selectedTickers]
-selectedDataPoints = ['fiftyTwoWeekHigh', 'fiftyDayAverage', 'twoHundredDayAverage']
+sampledTickers                      = [ticker for _, ticker in list(dachTickerDict.items())[:10]]
+selectedDataPoints                  = ['marketCap', 'beta', 'fiftyTwoWeekHigh', 'fiftyDayAverage', 'twoHundredDayAverage', 'returnOnEquity', 'numberOfAnalystOpinions', 'heldPercentInstitutions', '52WeekChange']
+minMarketCap, maxMarketCap, minBeta = 50000000, 50000000000, 1
 
-# PATTERN TEST
-def indicatorStorage():
-    df['volume' + str(trail1)] = df['Volume'].rolling(window=trail1).mean().round(1)
-    df['volume' + str(trail2)] = df['Volume'].rolling(window=trail2).mean().round(1)
-    df['tr'] = pd.concat([df['High'] - df['Low'], (df['High'] - df[triggerPrice]).abs(), (df['Low'] - df[triggerPrice]).abs()], axis=1).max(axis=1)
-    df['atr' + str(trail1)] = df['tr'].rolling(window=trail1).mean()
-    df['atr' + str(trail2)] = df['tr'].rolling(window=trail2).mean()
-    df['ema' + str(trail1)] = df[triggerPrice].ewm(span=trail1).mean()
-    df['ema' + str(trail2)] = df[triggerPrice].ewm(span=trail2).mean()
-    df['er' + str(trail1)] = df[triggerPrice].diff(trail1).abs() / df[triggerPrice].diff().abs().rolling(window=trail1).sum()
-    df['er' + str(trail2)] = df[triggerPrice].diff(trail2).abs() / df[triggerPrice].diff().abs().rolling(window=trail2).sum()
-    df['upperBb'] = df['Close'].rolling(window=trail1).mean() + (df['Close'].rolling(window=trail1).std() * factor1)
-    df['lowerBb'] = df['Close'].rolling(window=trail1).mean() - (df['Close'].rolling(window=trail1).std() * factor1)
-    df['macd' + str(trail1) + '-' + str(trail2)] = df['ema' + str(trail1)] / df['ema' + str(trail2)] - 1
-    df['noise' + str(trail1) + '-' + str(trail2)] = np.log((df['er' + str(trail1)] + 1e-6) / (df['er' + str(trail2)] + 1e-6))
-    df['volumedriven' + str(trail1) + '-' + str(trail2)] = (df['volume' + str(trail1)] / df['volume' + str(trail2)]) / df['er' + str(trail1)].rolling(window=trail1).mean()
-def livermoreReversal():
-    df['volume' + str(trail1)] = df['Volume'].rolling(window=trail1).mean().round(0)
-    df['lowerBB'] = (df['Close'].rolling(window=trail1).mean() - (df['Close'].rolling(window=trail1).std() * factor1)).round(2)
-    for i in range(1, signalLookback + 1):
-        if (df['Low'].iloc[i] < df['lowerBB'].shift(1).iloc[i]) and (df['Volume'].iloc[i] > (df['volume' + str(trail1)].shift(1).iloc[i] * factor1)):
-            tradeSignalsTickerDate.append((stockName, df.index[i]))
-def miniVcp():
-    df['volume' + str(trail1)] = df['Volume'].rolling(window=trail1).mean().round(1)
-    df['volume' + str(trail2)] = df['Volume'].rolling(window=trail2).mean().round(1)
-    df['tr'] = pd.concat([df['High'] - df['Low'], (df['High'] - df[triggerPrice]).abs(), (df['Low'] - df[triggerPrice]).abs()], axis=1).max(axis=1)
-    df['atr' + str(trail1)] = df['tr'].rolling(window=trail1).mean()
-    df['atr' + str(trail2)] = df['tr'].rolling(window=trail2).mean()
-    df['volatility' + str(trail1)] = df['Close'].rolling(window=trail1).std().round(1)
-    df['volatility' + str(trail2)] = df['Close'].rolling(window=trail2).std().round(1)
-    df['ema' + str(trail1)] = df[triggerPrice].ewm(span=trail1).mean()
-    df['ema' + str(trail2)] = df[triggerPrice].ewm(span=trail2).mean()
-    df['upperBb'] = df['Close'].rolling(window=trail1).mean() + (df['Close'].rolling(window=trail1).std() * factor1)
-    for i in range(1, signalLookback + 1):
-        if (df['High'].iloc[i] > df['upperBB'].shift(1).iloc[i]) and df['volume' + str(trail1)] < df['volume' + str(trail2)] and df['volatility' + str(trail1)] < df['volatility' + str(trail2)] and df['atr' + str(trail1)] < df['atr' + str(trail2)] and (df['Volume'].iloc[i] > (df['volume' + str(trail1)].shift(1).iloc[i] * factor1)):
-            tradeSignalsTickerDate.append((stockName, df.index[i]))
-
-# LOOP TROUGH UNIVERSE - KEEP TICKERS ONLY
+# PATTERN LOOP
 for stockName, ticker in dachTickerDict.items():
     if ticker in sampledTickers:
         try:
             df = yf.download(ticker, start=startDate, end=endDate)
             if not df.empty:
-                miniVcp()
+                livReversal()
         except Exception as e:
-            print(f"Error downloading data for {stockName} ({ticker}): {e}")
+            print(f"Error downloading data for ({ticker}): {e}")
 
-# CLEAN OUT CONSECUTIVE SIGNALS
+# SIGNAL BLOCK LOOP
 for stockName, signalDate in tradeSignalsTickerDate:
     if stockName not in seenTickers or signalDate - seenTickers[stockName] > signalBlock:
         seenTickers[stockName] = signalDate
         cleanedTradeSignals.append((stockName, signalDate))
 tradeSignalsTickerDate = cleanedTradeSignals
 
-# YFINANCE DATA FOR FILTERED STOCKS
-tradeSignalsFullData = {}
-for stockName, signalDate in tradeSignalsTickerDate:
+# FULL DATA LOOP
+for stockName in set(stockName for stockName, _ in tradeSignalsTickerDate):
     ticker = dachTickerDict[stockName]
     priceData = yf.download(ticker, start=startDate, end=endDate)
     infoData = {key: yf.Ticker(ticker).info[key] for key in selectedDataPoints}
-    tradeSignalsFullData[stockName] = {'price': priceData, 'info': infoData, 'signals': [signalDate]}
+    dataEntry = tradeSignalsFullData.setdefault(stockName, {'price': priceData, 'info': infoData, 'signals': []})
+    dataEntry['price'] = priceData
+    dataEntry['info'] = infoData
+for stockName, signalDate in tradeSignalsTickerDate:
+    tradeSignalsFullData[stockName]['signals'].append(signalDate)
+
+# FUNNYMENTAL LOOP
+for stockName in list(tradeSignalsFullData.keys()):
+    stockInfo = tradeSignalsFullData[stockName]['info']
+    if ('marketCap' in stockInfo and stockInfo['marketCap'] < minMarketCap) or \
+       ('marketCap' in stockInfo and stockInfo['marketCap'] > maxMarketCap) or \
+       ('beta' in stockInfo and stockInfo['beta'] < minBeta):
+        del tradeSignalsFullData[stockName]
+
+'''
+# PERFORMANCE LOOP
+for stockName, stockData in tradeSignalsFullData.items():
+    df = stockData['price']
+    signalDates = stockData['signals']
+    for signalDate in signalDates:
+        startClose = df.loc[signalDate, triggerPrice]
+        performanceData = []
+        
+        for i in range(progStart, progEnd):
+            close = df.iloc[i][triggerPrice]
+            performance = (close - startClose) / startClose
+            performanceData.append({'date': df.index[i], 'performance': performance})
+        
+        if stockName not in tradePerformance:
+            tradePerformance[stockName] = []
+        tradePerformance[stockName].append({'signalDate': signalDate, 'performanceData': performanceData})
+'''
+
+# PERFORMANCE AGGREGATION OVER 200DAYS LOOP
+
 
 # PLOTS
 def signalsDash():
@@ -217,15 +262,15 @@ def signals3D():
     minLength = min(len(yAxisDate), min(len(z) for z in zAxisVariable))
     yAxisDate, zAxisVariable = yAxisDate[:minLength], [z[:minLength] for z in zAxisVariable]
 
-    displayedDates = np.linspace(0, len(yAxisDate) - 1, 6, dtype=int)
+    displayedDates = np.linspace(0, len(yAxisDate) - 1, 5, dtype=int)
 
     for i in range(len(xAxisTicker)):
         ax.plot([i] * len(yAxisDate), list(range(len(yAxisDate))), zAxisVariable[i], color='navy')
 
-        signalIndices = [yAxisDate.index(date.strftime('%Y-%m-%d')) for date in signalDates[i]]
+        signalIndices = [yAxisDate.index(date.strftime('%Y-%m-%d')) for date in signalDates[i] if date.strftime('%Y-%m-%d') in yAxisDate]
         ax.scatter([i] * len(signalIndices), signalIndices, zAxisVariable[i][signalIndices], c='gold', marker='o')
 
-    xAxisTicker = [ticker[:3] for ticker in xAxisTicker]
+    xAxisTicker = [ticker for ticker in xAxisTicker]
     yAxisDate = [yAxisDate[i] for i in displayedDates]
     ax.set_xticks(list(range(len(xAxisTicker))))
     ax.set_xticklabels(xAxisTicker, rotation=45)
@@ -240,8 +285,8 @@ def signals3D():
     plt.tight_layout()
     plt.show()
 def results3D():
-    tradePerformance = {}
-    for stockName, signalDate in tradeSignalsTickerDate:
+
+    for stockName, signalDate in tradeSignalsFullData:
         df = tradeSignalsFullData[stockName]['price']
         nextDayIndex = df.index[df.index > signalDate]
         if not nextDayIndex.empty:
@@ -253,10 +298,9 @@ def results3D():
                 performance = (mostRecentClose - nextDayOpen) / nextDayOpen
                 tradePerformance[stockName].append({'date': signalDate, 'performance': performance})
 
-    # PLOT BACKTEST
-    dates = [mdates.date2num(performance['date']) for _, performances in tradePerformance.items() for performance in performances]
-    performances = [performance['performance'] * 100 for _, performances in tradePerformance.items() for performance in performances]
-    tickerNames = [stockName for stockName, _ in tradeSignalsTickerDate for _ in tradePerformance.get(stockName, [])]
+    dates = [mdates.date2num(performance['date']) for _, performances in patternPerformance.items() for performance in performances]
+    performances = [performance['performance'] * 100 for _, performances in patternPerformance.items() for performance in performances]
+    tickerNames = [stockName for stockName, _ in tradeSignalsTickerDate for _ in patternPerformance.get(stockName, [])]
     uniqueTickers = sorted(set(tickerNames))
     tickerToNum = {ticker: i for i, ticker in enumerate(uniqueTickers, start=1)}
     tickerNums = [tickerToNum[ticker] for ticker in tickerNames]
@@ -269,7 +313,6 @@ def results3D():
     ax.yaxis.line.set_color((0.5, 0.5, 1.0, 0.7))
     ax.zaxis.line.set_color((0.6, 0.0, 0.6, 0.7)) 
     ax.set_zlabel('Performance (%)')
-    ax.set_title('Empirica Investment - Trade Signal Analysis')
     ax.xaxis.set_major_locator(plt.MaxNLocator(10))
     ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda num, _: mdates.num2date(num).strftime('%Y-%m-%d')))
     ax.yaxis.set_ticks(range(1, len(uniqueTickers) + 1))

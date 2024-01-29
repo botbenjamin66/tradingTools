@@ -2,10 +2,10 @@
 mode                                          = 'classicBacktest'
 
 ### BACKTESTING ENVIRONMENT
-acid                                          = 'ed'
+acid                                          = 'btc'
 trail1, trail2, factor1                       = 120, 30, 2
 nominalFX, buySize, sellSize, maxLeverage     = 100, 1, 1, 1
-backtestStart, backtestEnd, dataInterval      = 2018, 2025, '1d'
+backtestStart, backtestEnd, dataInterval      = 2008, 2015, '1d'
 commissions, spread, skid, slippage, interest = 0.00, 0.00, 0.5, 0.00, 0.00
 
 from scipy.interpolate import griddata

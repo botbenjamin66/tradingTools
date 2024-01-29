@@ -11,7 +11,7 @@ import dash
 import os
 
 # VARIABLES & DICTIONARIES
-mode, cutOffDate, trail1, trail2 = 'mac', pd.to_datetime('01.01.2022', format='%d.%m.%Y'), 120, 400
+mode, cutOffDate, trail1, trail2 = 'aramea', pd.to_datetime('01.01.2019', format='%d.%m.%Y'), 120, 400
 
 # FETCH & MANIPULATE DATA
 def createDfs():
@@ -128,6 +128,7 @@ def addSdax(df, cutOffDate):
     df['sdax'].fillna(method='ffill', inplace=True)
     return df
 
+# MAIN
 if __name__ == '__main__':
     df = createDfs()[0]
     df = addSdax(df, cutOffDate)

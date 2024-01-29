@@ -6,12 +6,13 @@ import pandas as pd
 import glob
 import os
 
-def dfBasic(downloadsPath, inputDays):
+def dfBasic(inputDays):
+    folder_path = r'W:\Praktikanten und Werkstudenten\Benjamin Suermann\snake'
     file_paths = sorted(
-        glob.glob(f"{downloadsPath}/*.csv"),
+        glob.glob(f"{folder_path}\\*01.csv"),
         key=os.path.getmtime,
         reverse=True
-        )[:inputDays + 1]
+    )[:inputDays + 1]
 
     dfs = {} 
     for i, filePath in enumerate(file_paths, start=1):
@@ -54,7 +55,6 @@ def dfBasic(downloadsPath, inputDays):
 def plotDfBasic(df):
     avg_price = df['Price'].mean()
     times = mdates.date2num([datetime.combine(datetime.min.date(), t) for t in df.index])
-    plt.style.use('dark_background')
     fig, axes = plt.subplots(4, 1, figsize=(10, 20), sharex=True)
 
     contracts_mask = df['Contracts'] != 0
@@ -62,23 +62,16 @@ def plotDfBasic(df):
     big_orders_mask = df['bigOrders'] != 0
     small_orders_mask = df['smallOrders'] != 0
 
-    colors = {
-        'contracts': 'skyblue', 'cumulative': 'white', 'trailing1': 'red', 
-        'trailing2': 'blue', 'vwap': 'silver', 'obv': 'yellow', 
-        'big_orders': 'gold', 'small_orders': 'lightgrey'}
-    
-    for ax in axes:
-        ax.set_facecolor('#121212')
-        ax.grid(True, color='#333333')
-        
+    colors = {'contracts': 'navy', 'cumulative': 'orange', 'trailing1': 'navy', 'trailing2': 'orange', 'vwap': 'navy', 'obv': 'orange', 'big_orders': 'navy', 'small_orders': 'orange'}
+
     plotTitle = df['Date'].iloc[0].strftime('%Y-%m-%d')
     plt.suptitle(plotTitle, fontsize=14)
 
-    axes[0].set_ylabel('Contracts', fontsize=12)
-    axes[0].plot_date(times[contracts_mask], (df['Contracts'] * avg_price)[contracts_mask], '.', label='Contracts', color=colors['contracts'])
+    axes[0].set_ylabel('Contracts in k)', fontsize=12)
+    axes[0].plot_date(times[contracts_mask], (df['Contracts'] / 1000 * avg_price)[contracts_mask], '.', label='Contracts (in k)', color=colors['contracts'])
     axes0Secondary = axes[0].twinx()
-    axes0Secondary.plot_date(times[cumulative_mask], df['Cumulative'][cumulative_mask], '-', label='Cumulative', color=colors['cumulative'])
-    axes0Secondary.set_ylabel('Cumulative', fontsize=12)
+    axes0Secondary.plot_date(times[cumulative_mask], (df['Cumulative'] / 1000)[cumulative_mask], '-', label='Cumulative (in k)', color=colors['cumulative'])
+    axes0Secondary.set_ylabel('Cumulative (in k)', fontsize=12)
     axes[0].legend(loc='upper left')
     axes0Secondary.legend(loc='upper right')
 
@@ -113,14 +106,8 @@ def plotDfBasic(df):
     plt.subplots_adjust(hspace=0.3, left=0.1, right=0.85, bottom=0.1, top=0.95)
     plt.show()
 
-downloadsPath = os.path.expanduser('~/Downloads')
-dfData = dfBasic(downloadsPath, inputDays=1) 
+dfData = dfBasic(inputDays=1) 
 
 for day, df in dfData.items():
     print(f"Plotting {day} data")
     plotDfBasic(df)
-    #print(df)
-
-
-
-
