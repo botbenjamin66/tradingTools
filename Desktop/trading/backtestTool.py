@@ -496,8 +496,6 @@ def plotCorrScatter():
     plt.subplots_adjust(hspace=0.4)
     plt.show()
 
-
-
 ### MAIN
 if __name__ == "__main__":
 
