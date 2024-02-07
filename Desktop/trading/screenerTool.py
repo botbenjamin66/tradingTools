@@ -1,9 +1,3 @@
-# JC PATTERN, CONTINOUS OR NEGATIVE SIGNALS
-# ORDER OF DF
-# SIMPLIFY
-# KORR METRIC
-# IMPROVE PERFORMANCE; DOWNLOAD + SYNCHRONOUS
-
 from dash.dependencies import Input, Output
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
@@ -18,7 +12,7 @@ import pandas as pd
 import numpy as np
 
 # ENVIRONMENT
-endDate, startDate                          = datetime.now() - timedelta(days=0), datetime.now() - timedelta(days=10)
+endDate, startDate                          = datetime.now() - timedelta(days=0), datetime.now() - timedelta(days=20)
 triggerPrice, tradePrice, signalBlock       = 'Close', 'Open', timedelta(days=5)
 trail1, trail2, factor1, progStart, progEnd = 20, 50, 2, 20, 150
 dachTickerDict                              = {
@@ -118,7 +112,7 @@ dachTickerDict                              = {
     "Fabasoft": "FAA.DE", "Garmin": "GRMN", "Pierer Mobility (ex KTM Industries)": "PKTM.VI",
     "QIAGEN":"QGEN", "Redcare Pharmacy":"RDC.DE", "Siemens Energy":"ENR.DE", "SAF-HOLLAND":"SFQ.DE", "Deufol":"DE1.HM", 
     "M1 Kliniken": "M12.DE", "FUCHS PETROLUB": "FPE3.DU", "Zapf Creation": "ZPF.HM"}
-sampledTickers                              = [ticker for _, ticker in list(dachTickerDict.items())[:100]]
+sampledTickers                              = [ticker for _, ticker in list(dachTickerDict.items())[:5]]
 selectedDataPoints                          = ['marketCap', 'beta', 'fiftyTwoWeekHigh', 'fiftyDayAverage', 'twoHundredDayAverage', 'returnOnEquity', 'heldPercentInstitutions', '52WeekChange']
 minMcap, maxMcap, beta, roe, insti, oneYrPf = 1_000_000, 50_000_000_000, 0, 10, 10, 0
 
@@ -320,7 +314,7 @@ def resultsAggregatedAfterSignal():
 # TOOLS
 def sdaxAlpha():
     global df
-    sdaxStart, sdaxEnd = df['date'].min() - timedelta(days=1), df['date'].max() + timedelta(days=1)
+    sdaxStart, sdaxEnd = (df['date'].min() - timedelta(days=1)).date(), (df['date'].max() + timedelta(days=1)).date()
     sdax = yf.Ticker("^SDAXI").history(start=sdaxStart, end=sdaxEnd)[['Close']]
     df['date'], df['sdaxPerformanceToInterval'] = df['date'].dt.tz_localize('Europe/Berlin'), np.nan
     df = df.merge(sdax, how='left', left_on='date', right_index=True)
@@ -356,7 +350,7 @@ if __name__ == "__main__":
             try:
                 df = yf.download(ticker, start=startDate, end=endDate)
                 if not df.empty:
-                    sexyHot()
+                    miniVcp()
             except Exception as e:
                 print(f"Error downloading data for ({ticker}): {e}")
 
@@ -414,7 +408,7 @@ if __name__ == "__main__":
     df = pd.DataFrame(performanceData, columns=['stockName', 'signalDate', 'date', 'intervalsToSignal', 'performanceToInterval'])
     numberOfSampledStocks, numberOfSampledSignals = df['stockName'].nunique(), df['signalDate'].nunique()
     sdaxAlpha()
-    
+
     # PLOTS
     signals3D()
     resultsAggregatedAfterSignal()
