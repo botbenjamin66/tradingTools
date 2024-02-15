@@ -5,8 +5,8 @@ mode                                          = 'classicBacktest'
 acid                                          = 'btc'
 trail1, trail2, factor1                       = 120, 30, 2
 nominalFX, buySize, sellSize, maxLeverage     = 100, 1, 1, 1
-backtestStart, backtestEnd, dataInterval      = 2008, 2015, '1d'
-commissions, spread, skid, slippage, interest = 0.00, 0.00, 0.5, 0.00, 0.00
+backtestStart, backtestEnd, dataInterval      = 2008, 2019, '1d'
+commissions, spread, skid, slippage, interest = 0.00, 0.00, 0.00, 0.00, 0.00
 
 from scipy.interpolate import griddata
 from sklearn.metrics import r2_score
@@ -174,10 +174,10 @@ def tradingData(longEntry, longExit, shortEntry, shortExit):
     dfTrading = pd.concat([dfBasic, dfFloatFeature, dfBoolFeature], axis=1)
 
     # SIGNALS
-    dfTrading['longEntry'] = dfBasic[triggerPrice].gt(dfBasic[triggerPrice].shift(1).rolling(window=longEntry).max())
-    dfTrading['longExit'] = dfBasic[triggerPrice].lt(dfBasic[triggerPrice].shift(1).rolling(window=longExit).min())
+    dfTrading['longEntry']  = dfBasic[triggerPrice].gt(dfBasic[triggerPrice].shift(1).rolling(window=longEntry).max())
+    dfTrading['longExit']   = dfBasic[triggerPrice].lt(dfBasic[triggerPrice].shift(1).rolling(window=longExit).min())
     dfTrading['shortEntry'] = dfBasic[triggerPrice].lt(dfBasic[triggerPrice].shift(1).rolling(window=shortEntry).min())
-    dfTrading['shortExit'] = dfBasic[triggerPrice].gt(dfBasic[triggerPrice].shift(1).rolling(window=shortExit).max())
+    dfTrading['shortExit']  = dfBasic[triggerPrice].gt(dfBasic[triggerPrice].shift(1).rolling(window=shortExit).max())
 
     # EXPOSURE
     if not (dfTrading['longEntry'].any() or dfTrading['longExit'].any()):
