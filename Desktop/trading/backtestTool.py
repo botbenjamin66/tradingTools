@@ -1,13 +1,14 @@
-### ENVIROMENT
+# ENVIROMENT
 mode                                          = 'classicBacktest'
 
-### BACKTESTING ENVIRONMENT
-acid                                          = 'btc'
-trail1, trail2, factor1                       = 120, 30, 2
+# BACKTESTING ENVIRONMENT
+acid                                          = 'ed'
+trail1, trail2, factor1                       = 190, 20, 2
 nominalFX, buySize, sellSize, maxLeverage     = 100, 1, 1, 1
 backtestStart, backtestEnd, dataInterval      = 2008, 2019, '1d'
 commissions, spread, skid, slippage, interest = 0.00, 0.00, 0.00, 0.00, 0.00
 
+# IMPORTS
 from scipy.interpolate import griddata
 from sklearn.metrics import r2_score
 from scipy.optimize import curve_fit
@@ -20,7 +21,7 @@ import pandas as pd
 import numpy as np
 import time
 
-### INIT
+# INIT
 def initTicker():
     if acid == 'btc':
         ticker = ['BTC-USD']
@@ -43,7 +44,7 @@ def initParameter():
         longEntry, longExit, shortEntry, shortExit = trail1, trail2, trail1, trail2
         return longEntry, longExit, shortEntry, shortExit
 
-### TOOLS
+# TOOLS
 def annualizationFactor():
     freqMap = {
         '1m': np.sqrt(252 * 24 * 60), '2m': np.sqrt(252 * 24 * 30), '5m': np.sqrt(252 * 24 * 12), '15m': np.sqrt(252 * 24 * 4),
@@ -95,14 +96,14 @@ def concatYfinance():
     print(dfBasic)
     return dfBasic
 
-### DATA
+# DATA
 def basicData():
     global ticker
     if acid == "ed":
         dfBasic = pd.read_csv('/Users/benjaminsuermann/Desktop/trading/edGoldData.csv', sep = ';')
         dfBasic['Date'] = pd.to_datetime(dfBasic['Date'], format='%d.%m.%y')
         dfBasic = dfBasic.set_index('Date')
-        dfBasic = dfBasic.iloc[:2700]
+        #dfBasic = dfBasic.iloc[:500]
         dfBasic['marketReturns'] = dfBasic[triggerPrice].pct_change()
         return dfBasic
     else:
@@ -304,7 +305,7 @@ def statsData():
     dfStats.drop(columns=dfReturn.columns.tolist(), inplace=True)
     return dfStats, dict1ticker1set
 
-### STORE
+# STORE
 def store1ticker1set():
     global dict1ticker1set
     dict1ticker1set[ticker] = {'cagr': dict1ticker1set['cagr'], 'drawdown': dict1ticker1set['drawdown'], 'bliss': dict1ticker1set['bliss'],
@@ -338,7 +339,7 @@ def store1ticker1set():
             'shortExit': d,
             'bliss': dict1ticker1set['bliss']}
 
-### PLOT
+# PLOT
 def plotBasic():
     mpf.plot(dfBasic, type='candle', style='charles', title=f'{ticker} from {dfBasic.index[0].strftime("%Y-%m-%d")} to {dfBasic.index[-1].strftime("%Y-%m-%d")}')
 def plotSignal():
@@ -496,7 +497,7 @@ def plotCorrScatter():
     plt.subplots_adjust(hspace=0.4)
     plt.show()
 
-### MAIN
+# MAIN
 if __name__ == "__main__":
 
      if mode in ('classicBacktest', 'paraloopBacktest', 'featureTesting', 'concatFeatureTesting'):
@@ -517,10 +518,10 @@ if __name__ == "__main__":
                 dfReturn                                                         = returnData()
                 dfStats, dict1ticker1set                                         = statsData()
 
-                plotBasic()
-                plotSignal()
-                plotReturn()
-                plotHistogram()
+                #plotBasic()
+                #plotSignal()
+                #plotReturn()
+                #plotHistogram()
                 plotTable()
             if mode == 'paraloopBacktest':
                 startTime = time.time()
